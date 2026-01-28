@@ -136,7 +136,7 @@ dat <- dat %>%
 ```
 
 
-Create demo table to compare complete cases to full cohort
+Create Table 1 (Demographics)
 ```{r}
 library(table1)
 library(flextable)
@@ -160,7 +160,7 @@ print(doc, target = file.path(Table_folder_path, "Table 3.0.docx"))
 
 ```
 
-# Demographics of dataset
+# Demographics of dataset following exclusions
 # Age prfile
 
 ##### *Age*
@@ -242,57 +242,20 @@ We are using only participants with all of duration and number of days/wk of act
 
 The full IPAQ calculates total physical activity as a combination of both leisure time PA (LTPA) as well as domains of work and normal activity - as such the resulting median MET-minutes is higher than for participation in LTPA alone. The general public health recommendations of 30 mins of MVPA are relatively low with most adults being able to achieve this regardless of leisure time activity. To look at the health benefits of LTPA higher cut point thresholds are needed for UKB IPAQ data.
 
-#### ***Derived overall measures of Metabolic***
-
-The methods for deriving METs is described in Cassidy S, Chau JY, Catt M, et al Cross-sectional study of diet, physical activity, television viewing and sleep duration in 233 110 adults from the UK Biobank; the behavioural phenotype of cardiovascular disease and type 2 diabetesBMJ Open 2016;6:e010038. doi: 10.1136/bmjopen-2015-010038
-
-MET scoring used
-
-- Walking MET - minutes/week = 3.3 * walking minutes * walking days
-- Moderate MET - minutes/week = 4.0 * moderate-intensity activity minutes * moderate days
-- Vigorous MET - minutes/week = 8.0 * vigorous-intensity activity minutes * vigorous days
-- Total physical activity MET-minutes/week = sum of Walking + Moderate_Vigorous MET-minutes/week scores
-
-## Catagories used by UKB
-
-The below are exact quotes taken from page 6 of the IPAQ guidelines provided by UKB (https://biobank.ndph.ox.ac.uk/showcase/refer.cgi?id=540)
-
-### Moderate PA
-a) 3 or more days of vigorous intensity activity of at least 20 minutes per day 
-*OR*
-b) 5 or more days of moderate-intensity activity and/or walking of at least 30 minutes/day
-*OR*
-c) 5 or more days of any combination of walking, moderate intensity or vigorous intensity activities achieving a minimum Total physical activity of at least 600 MET-minutes/week
-
-### High PA
-A separate catagory of high activity is made from the participant meeting the two following crititeria
-a) vigorous-intensity activity on at least 3 days achieving a minimum Total physical activity of at least 1500 MET minutes/week
-*OR*
-b)7 or more days of any combination of walking, moderate-intensity or vigorous-intensity activities achieving a minimum Total physical activity of at least 3000 MET-minutes/week
-
 
 #### Moderate activity
 
 ```{r}
-ggplot(dat[!is.na(dat$duration_mod_PA), ], aes(x = duration_mod_PA)) +
+ggplot(dat[!is.na(dat$mins_wk_mod), ], aes(x = mins_wk_mod)) +
   geom_histogram(binwidth = 5, fill = "skyblue", color = "black") +
-  labs(title = "Histogram of Duration of moderate activity",
+  labs(title = "Histogram of minutes/week of moderate activity",
        x = "Duration (minutes/wk)",
        y = "Count") +
   theme_minimal()
 ```
+
 ```{r}
 
-ggplot(dat, aes(x = num_days_mod_PA)) +
-  geom_bar(fill = "lightblue", color = "black") +
-  labs(
-    title = "Number of days moderate PA per week",
-    x = "Number of days",
-    y = "Count"
-  ) +
-  theme_minimal()
-```
-```{r}
 hist(dat$MET_mod, 
      main = "Histogram of MET mins/week moderate activity", 
      xlab = "MET mins/week of moderate activity", 
@@ -300,9 +263,10 @@ hist(dat$MET_mod,
      col = "lightblue", 
      border = "black")
 ```
+     
 
 ```{r}
-vars <- c( "duration_mod_PA", "num_days_mod_PA","mins_wk_mod", "MET_mod")
+vars <- c( "mins_wk_mod", "MET_mod")
 
 PA_summary_sex <- dat %>%
   group_by(sex) %>%
@@ -362,23 +326,11 @@ Table_3.1
 
 #### Vigorous activity
 ```{r}
-ggplot(dat[!is.na(dat$duration_vig_PA), ], aes(x = duration_vig_PA)) +
+ggplot(dat[!is.na(dat$mins_wk_vig), ], aes(x = mins_wk_vig)) +
   geom_histogram(binwidth = 5, fill = "skyblue", color = "black") +
-  labs(title = "Histogram of Duration of vigorous activity",
+  labs(title = "Histogram of minutes/week of vigorous activity",
        x = "Duration  (minutes/wk)",
        y = "Count") +
-  theme_minimal()
-```
-
-```{r}
-
-ggplot(dat, aes(x = num_days_vig_PA)) +
-  geom_bar(fill = "lightblue", color = "black") +
-  labs(
-    title = "Number of days vigorous PA per week",
-    x = "Number of days",
-    y = "Count"
-  ) +
   theme_minimal()
 ```
 
@@ -392,7 +344,7 @@ hist(dat$MET_mod,
 ```
 
 ```{r}
-vars <- c( "duration_vig_PA", "num_days_vig_PA","mins_wk_vig", "MET_vig")
+vars <- c( "mins_wk_vig", "MET_vig")
 
 PA_summary_sex <- dat %>%
   group_by(sex) %>%
@@ -450,27 +402,14 @@ Table_3.2 <-make_table(
 Table_3.2
 ```
 
-
 #### Walking behaviour
 
 ```{r}
-ggplot(dat[!is.na(dat$duration_walk), ], aes(x = duration_walk)) +
+ggplot(dat[!is.na(dat$mins_wk_walk), ], aes(x = mins_wk_walk)) +
   geom_histogram(binwidth = 5, fill = "skyblue", color = "black") +
-  labs(title = "Histogram of Duration of walking",
+  labs(title = "Histogram of mins/week walking",
        x = "Duration Walk (minutes/wk)",
        y = "Count") +
-  theme_minimal()
-```
-
-```{r}
-
-ggplot(dat, aes(x = num_day_walk)) +
-  geom_bar(fill = "lightblue", color = "black") +
-  labs(
-    title = "Number of days walked per week",
-    x = "Number of days",
-    y = "Count"
-  ) +
   theme_minimal()
 ```
 
@@ -484,7 +423,7 @@ hist(dat$MET_walk,
 ```
 
 ```{r}
-vars <- c( "duration_walk", "num_day_walk", "mins_wk_walk", "MET_walk")
+vars <- c("mins_wk_walk", "MET_walk")
 
 PA_summary_sex <- dat %>%
   group_by(sex) %>%
@@ -542,57 +481,28 @@ Table_3.3 <-make_table(
 Table_3.3
 ```
 
-All data is skewed, look at whether log transformation helps normalise the data
-
-```{r}
-dat <- dat %>%
-  mutate(log_MET_mod = log(MET_mod + 1))
-
-ggplot(dat, aes(x = log_MET_mod)) +
-  geom_histogram(bins = 50) +
-  theme_minimal()
-```
-```{r}
-
-# 99th percentile and log transformed
-# 1. Calculate 99th percentile on raw MET_mod
-p99 <- quantile(dat$MET_mod, 0.99, na.rm = TRUE)
-
-# 2. Filter out extreme values
-dat <- dat %>%
-  filter(MET_mod <= p99)
-
-# 3. Log transform
-dat <- dat %>%
-  mutate(log_MET_mod = log(MET_mod + 1))
-
-ggplot(dat, aes(x = log_MET_mod)) +
-  geom_histogram(bins = 50) +
-  theme_minimal()
-```
-# Log transformed MET_vig and MET_walk
-
-```{r}
-dat <- dat %>%
-  mutate(log_MET_vig = log(MET_vig + 1))
-
-ggplot(dat, aes(x = log_MET_vig)) +
-  geom_histogram(bins = 50) +
-  theme_minimal()
-
-dat <- dat %>%
-  mutate(log_MET_walk = log(MET_walk + 1))
-
-ggplot(dat, aes(x = log_MET_walk)) +
-  geom_histogram(bins = 50) +
-  theme_minimal()
-```
-
-
 #### Combined activity
 
 - MVPA
 This variable has been derived along with mins/wk in MVPA in order to compare to other published data and the accelerometry data
+
+```{r}
+ggplot(dat[!is.na(dat$mins_wk_MVPA), ], aes(x = mins_wk_MVPA)) +
+  geom_histogram(binwidth = 5, fill = "skyblue", color = "black") +
+  labs(title = "Histogram of Minutes/week Moderate and vigorous activity",
+       x = "Duration Walk (minutes/wk)",
+       y = "Count") +
+  theme_minimal()
+```
+
+```{r}
+hist(dat$MET_MVPA, 
+     main = "Histogram of MET mins/week Moderate and vigorous (MVPA) activity", 
+     xlab = "MET mins/week of MVPA", 
+     ylab = "Frequency", 
+     col = "lightblue", 
+     border = "black")
+```
 
 ```{r}
 
@@ -674,37 +584,6 @@ Sum of days performing walking, moderate and vigorous activity - question derive
 
 As with the above this is the total amount of time in minutes spent walking, doing vigorous and doing moderate PA. Unlike summed days this should not exceed the total number of minutes in a week
 
-```{r}
-hist(dat$MET_MVPA, 
-     main = "Histogram of MET mins/week MVPA", 
-     xlab = "MET mins/week of MVPA", 
-     ylab = "Frequency", 
-     col = "lightblue", 
-     border = "black")
-
-dat <- dat %>%
-  mutate(log_MET_MVPA = log(MET_MVPA + 1))
-
-ggplot(dat, aes(x = log_MET_MVPA)) +
-  geom_histogram(bins = 50) +
-  theme_minimal()
-```
-```{r}
-hist(dat$mins_wk_MVPA, 
-     main = "Histogram of mins/week MVPA", 
-     xlab = "mins/week of MVPA", 
-     ylab = "Frequency", 
-     col = "lightblue", 
-     border = "black")
-
-dat <- dat %>%
-  mutate(log_mins_wk_MVPA = log(mins_wk_MVPA + 1))
-
-ggplot(dat, aes(x = log_mins_wk_MVPA)) +
-  geom_histogram(bins = 50) +
-  theme_minimal()
-```
-
 
 ```{r}
 vars <- c(  "summed_MET_all")
@@ -768,8 +647,8 @@ Table_3.3
 
 ```{r MET histo, echo=FALSE}
 
-hist(dat$MVPA, 
-     main = "Histogram of summed MET mins/week for all activity", 
+hist(dat$mins_wk_summed, 
+     main = "Histogram of summed mins/week for all activity", 
      xlab = "MET mins/week of all activity", 
      ylab = "Frequency", 
      col = "lightblue", 
@@ -783,7 +662,6 @@ hist(dat$summed_MET_all,
      border = "black")
 
 ```
-
 
 
 #### International Physical Activity Questionnaire (IPAQ) group (p22032_i0)
@@ -800,6 +678,265 @@ ggplot(dat, aes(x = IPAQ)) +
   ) +
   theme_minimal() 
 
+```
+
+
+### Summarise physical activity by outcome
+
+```{r}
+PA_vars <- c("MET_mod", "MET_vig", "MET_MVPA", "MET_walk")
+
+dat <- dat %>%
+  mutate(
+    Fracture = factor(SRF, levels = c(0, 1), labels = c("No fracture", "Fracture"))
+  )
+
+# Summarise by fracture
+PA_summary_fracture <- dat %>%
+  group_by(SRF) %>%
+  summarise(
+    across(
+      all_of(PA_vars),
+      list(
+        N        = ~ sum(!is.na(.)),
+        Mean     = ~ round(mean(., na.rm = TRUE), 2),
+        SD       = ~ round(sd(., na.rm = TRUE), 2),
+        Median   = ~ round(median(., na.rm = TRUE), 2),
+        Min      = ~ min(., na.rm = TRUE),
+        Max      = ~ max(., na.rm = TRUE),
+        IQR_low  = ~ quantile(., 0.25, na.rm = TRUE),
+        IQR_high = ~ quantile(., 0.75, na.rm = TRUE)
+      ),
+      .names = "{.col}_{.fn}"
+    )
+  )
+
+# Summarise total (all participants)
+PA_summary_total <- dat %>%
+  summarise(
+    across(
+      all_of(PA_vars),
+      list(
+        N        = ~ sum(!is.na(.)),
+        Mean     = ~ round(mean(., na.rm = TRUE), 2),
+        SD       = ~ round(sd(., na.rm = TRUE), 2),
+        Median   = ~ round(median(., na.rm = TRUE), 2),
+        Min      = ~ min(., na.rm = TRUE),
+        Max      = ~ max(., na.rm = TRUE),
+        IQR_low  = ~ quantile(., 0.25, na.rm = TRUE),
+        IQR_high = ~ quantile(., 0.75, na.rm = TRUE)
+      ),
+      .names = "{.col}_{.fn}"
+    )
+  ) %>%
+  mutate(fracture = "Total") %>%
+  select(fracture, everything())
+
+PA_summary <- bind_rows(PA_summary_fracture, PA_summary_total) %>%
+  pivot_longer(
+    -SRF,
+    names_to = c("Variable", ".value"),
+    names_pattern = "^(.*)_(N|Mean|SD|Median|Min|Max|IQR_low|IQR_high)$"
+  ) %>%
+  rename(`Fracture status` = SRF)
+
+
+Table_3.5 <- make_table(
+  PA_summary,
+  table_number = "3.5",
+  folder_path = Table_folder_path,
+  title = "Summary statistics on PA variables at baseline by fracture status"
+)
+
+Table_3.5
+
+```
+# Visual comparison
+
+Moderate PA
+```{r}
+
+boxplot(dat$MET_mod ~ dat$SRF)
+
+# Calculate 1st and 99th percentiles
+lims <- quantile(dat$MET_mod, probs = c(0.01, 0.99), na.rm = TRUE)
+
+# Create trimmed dataset
+dat_99 <- dat %>%
+  filter(
+    MET_mod >= lims[1],
+    MET_mod <= lims[2]
+  )
+
+# Boxplot
+boxplot(
+  MET_mod ~ SRF,
+  data = dat_99,
+  ylab = "Moderate PA (MET-min/week)",
+  xlab = "Fracture",
+  main = "Moderate physical activity by Fracture (1st–99th percentile)"
+)
+
+### With inactivity ie MET = 0 removed
+
+dat_nonzero_99 <- dat %>%
+  filter(MET_mod > 0)
+
+lims <- quantile(dat_nonzero_99$MET_mod, c(0.01, 0.99), na.rm = TRUE)
+
+dat_nonzero_99 <- dat_nonzero_99 %>%
+  filter(MET_mod >= lims[1], MET_mod <= lims[2])
+
+boxplot(
+  MET_mod ~ SRF,
+  data = dat_nonzero_99,
+  ylab = "Moderate PA (MET-min/week)",
+  xlab = "Fracture",
+  main = "Moderate PA (non-zero, 1st–99th percentile)"
+)
+
+
+```
+
+Vigorous PA
+```{r}
+
+boxplot(dat$MET_vig ~ dat$SRF)
+
+# Calculate 1st and 99th percentiles
+lims <- quantile(dat$MET_vig, probs = c(0.01, 0.99), na.rm = TRUE)
+
+# Create trimmed dataset
+dat_99 <- dat %>%
+  filter(
+    MET_vig >= lims[1],
+    MET_vig <= lims[2]
+  )
+
+# Boxplot
+boxplot(
+  MET_vig ~ SRF,
+  data = dat_99,
+  ylab = "Vigorous PA (MET-min/week)",
+  xlab = "Fracture",
+  main = "Vigorous physical activity by Fracture (1st–99th percentile)"
+)
+
+### With inactivity ie MET = 0 removed
+
+dat_nonzero_99 <- dat %>%
+  filter(MET_vig > 0)
+
+lims <- quantile(dat_nonzero_99$MET_vig, c(0.01, 0.99), na.rm = TRUE)
+
+dat_nonzero_99 <- dat_nonzero_99 %>%
+  filter(MET_vig >= lims[1], MET_vig <= lims[2])
+
+boxplot(
+  MET_vig ~ SRF,
+  data = dat_nonzero_99,
+  ylab = "Vigorous PA (MET-min/week)",
+  xlab = "Fracture",
+  main = "Vigorous PA (non-zero, 1st–99th percentile)"
+)
+
+```
+MVPA
+
+```{r}
+
+boxplot(dat$MET_MVPA ~ dat$SRF)
+
+# Calculate 1st and 99th percentiles
+lims <- quantile(dat$MET_MVPA, probs = c(0.01, 0.99), na.rm = TRUE)
+
+# Create trimmed dataset
+dat_99 <- dat %>%
+  filter(
+    MET_MVPA >= lims[1],
+    MET_MVPA <= lims[2]
+  )
+
+# Boxplot
+boxplot(
+  MET_MVPA ~ SRF,
+  data = dat_99,
+  ylab = "MVPA (MET-min/week)",
+  xlab = "Fracture",
+  main = "MVPA physical activity by self-rated health (1st–99th percentile)"
+)
+
+### With inactivity ie MET = 0 removed
+
+dat_nonzero_99 <- dat %>%
+  filter(MET_MVPA > 0)
+
+lims <- quantile(dat_nonzero_99$MET_MVPA, c(0.01, 0.99), na.rm = TRUE)
+
+dat_nonzero_99 <- dat_nonzero_99 %>%
+  filter(MET_MVPA >= lims[1], MET_MVPA <= lims[2])
+
+boxplot(
+  MET_MVPA ~ SRF,
+  data = dat_nonzero_99,
+  ylab = "Moderate PA (MET-min/week)",
+  xlab = "Fracture",
+  main = "MVPA PA (non-zero, 1st–99th percentile)"
+)
+
+```
+
+
+
+
+
+
+### Log transformations if needed ###
+
+All data is skewed, look at whether log transformation helps normalise the data
+
+```{r}
+dat <- dat %>%
+  mutate(log_MET_mod = log(MET_mod + 1))
+
+ggplot(dat, aes(x = log_MET_mod)) +
+  geom_histogram(bins = 50) +
+  theme_minimal()
+```
+```{r}
+
+# 99th percentile and log transformed
+# 1. Calculate 99th percentile on raw MET_mod
+p99 <- quantile(dat$MET_mod, 0.99, na.rm = TRUE)
+
+# 2. Filter out extreme values
+dat <- dat %>%
+  filter(MET_mod <= p99)
+
+# 3. Log transform
+dat <- dat %>%
+  mutate(log_MET_mod = log(MET_mod + 1))
+
+ggplot(dat, aes(x = log_MET_mod)) +
+  geom_histogram(bins = 50) +
+  theme_minimal()
+```
+# Log transformed MET_vig and MET_walk
+
+```{r}
+dat <- dat %>%
+  mutate(log_MET_vig = log(MET_vig + 1))
+
+ggplot(dat, aes(x = log_MET_vig)) +
+  geom_histogram(bins = 50) +
+  theme_minimal()
+
+dat <- dat %>%
+  mutate(log_MET_walk = log(MET_walk + 1))
+
+ggplot(dat, aes(x = log_MET_walk)) +
+  geom_histogram(bins = 50) +
+  theme_minimal()
 ```
 
 
