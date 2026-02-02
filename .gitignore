@@ -1,6 +1,8 @@
 # Data folders
 data_raw/
 data_derived/
+
+#Document folders with notes
 docs/
 
 # Output files
@@ -15,6 +17,6 @@ docs/
 .RData
 
 # renv folders
-renv/library/
-renv/python/
+renv/
+
 
