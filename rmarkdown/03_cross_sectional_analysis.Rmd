@@ -1,0 +1,781 @@
+---
+title: "03_cross_sectional_analysis"
+author: "Catherine Rolls"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+
+```{r libraries, include=FALSE}
+
+#load libraries
+
+library (data.table)
+library (dplyr)
+library (e1071)
+library (ggplot2)
+library (readr)
+library(tidyr)
+library(scales)
+library (forcats)
+library (flextable)
+library(table1)
+library(flextable)
+library(officer)
+library(broom)
+library(emmeans)
+
+
+```
+
+```{r}
+# The following processing steps will create automated table outputs
+
+# Create folder path for Table and Figure results
+Table_folder_path <- "../results/tables"
+Figure_folder_path <- "../results/figures"
+
+
+# Function to make table from summary data
+make_table <- function(summary_df, table_number, folder_path, title = NULL) {
+  
+  ft <- summary_df |>
+    flextable() |>
+    autofit() |>
+    theme_vanilla()
+  
+  save_flextable(ft, table_number, folder_path, title)
+  
+  ft  # return the table for printing in markdown
+}
+
+# Function to save flextable outputs to word
+
+save_flextable <- function(ft, table_number, folder_path, title = NULL) {
+  # ensure folder exists
+  if (!dir.exists(folder_path)) dir.create(folder_path, recursive = TRUE)
+  
+  # construct path
+  file_name <- paste0("Table_", table_number, ".docx")
+  file_path <- file.path(folder_path, file_name)
+  
+  # start doc
+  doc <- read_docx()
+  
+  # add title (only if provided)
+  if (!is.null(title)) {
+    full_title <- paste0("Table ", table_number, ": ", title)
+    doc <- doc |>
+      body_add_par(full_title, style = "Normal") |>
+      body_add_par("", style = "Normal")  # blank line
+  }
+  
+  # add the table and save
+  doc <- doc |> body_add_flextable(ft)
+  print(doc, target = file_path)
+  
+  message("Saved: ", file_path)
+  invisible(file_path)
+}
+```
+
+Load dataset: This has already had exclusions applied to it, it is a complete case dataset
+
+```{r}
+dat <- readRDS("../data_derived/complete_case_dat.Rds")
+```
+
+Data set of complete case participants for analysis
+```{r}
+# Select variables for cross sectional analysis
+dat <- dat %>%
+  select (
+    eid,
+    age_education,
+    ethnicity,
+    SRF,
+    Wrist,
+    Hip,
+    duration_mod_PA,
+    num_days_mod_PA,
+    duration_vig_PA,
+    num_days_vig_PA,
+    duration_walk,
+    num_day_walk,
+    IPAQ,
+    MET_mod = cc_MET_mod, 
+    mins_wk_mod = cc_mins_wk_mod,
+    MET_vig = cc_MET_vig,
+   mins_wk_vig =  cc_mins_wk_vig,
+   MET_MVPA = cc_MET_MVPA,
+   mins_wk_MVPA = cc_mins_wk_MVPA,
+    MET_walk = cc_MET_walk,
+    mins_wk_walk = cc_mins_wk_walk,
+    MET_summed = cc_MET_summed,
+    mins_wk_summed = cc_mins_wk_summed,
+    MET_mod_derived = MET_mod,
+    MET_vig_derived = MET_vig,
+    MET_walk_derived = MET_walk,
+    MVPA_derived = MVPA,
+    summed_MET_all = cc_MET_summed,
+   mins_wk_summed = cc_mins_wk_summed,
+    date_assess_A0,
+    assessment_country,
+    age_A0,
+    agegp_A0,
+    sex,
+    qualification,
+    tdi,
+    WC,
+    weight,
+    height,
+    BMI,
+    BMI_category,
+    lost_to_fu,
+    approx_dob_derived,
+  )
+```
+
+### Univariate regression with each PA variable and overall fracture
+```{r}
+# Convert character to factor
+dat <- dat %>%
+  mutate(SRF = factor(SRF, levels = c("No", "Yes")))
+
+
+glm(dat$SRF ~ dat$MET_mod, family = binomial)
+glm(dat$SRF ~ dat$MET_vig, family = binomial) 
+glm(dat$SRF ~ dat$MET_walk, family = binomial) 
+glm(dat$SRF ~ dat$MET_MVPA, family = binomial) 
+
+```
+
+#### Scale to 30 min per week increments for interpretation
+
+```{r}
+# Scale by 30 minutes
+dat <- dat %>%
+  mutate(
+    MET_mod_30min = MET_mod / 30,
+    MET_vig_30min = MET_vig / 30,
+    MET_walk_30min = MET_walk / 30,
+    MET_MVPA_30min = MET_MVPA / 30
+  )
+
+PA_vars_scaled <- c("MET_mod_30min", "MET_vig_30min", "MET_walk_30min", "MET_MVPA_30min")
+
+models <- list()
+
+for (var in PA_vars_scaled) {
+  fmla <- reformulate(var, response = "SRF")  # creates SRF ~ var
+  models[[var]] <- glm(fmla, data = dat, family = binomial)
+}
+
+
+OR_table <- lapply(models, function(mod) {
+  tidy(mod, conf.int = TRUE, exponentiate = TRUE) %>%  # exponentiate = TRUE gives OR
+    filter(term != "(Intercept)") %>%                   # keep only the PA variable
+    select(term, estimate, conf.low, conf.high, p.value)
+}) %>%
+  bind_rows(.id = "Variable") %>%
+  rename(
+    OR = estimate,
+    `95% CI lower` = conf.low,
+    `95% CI upper` = conf.high,
+    `p-value` = p.value
+  )
+
+OR_table
+
+```
+### Check linearity assumption
+
+#### 30 min increase in mod PA
+```{r}
+# Fit the model
+mod <- glm(SRF ~ MET_mod_30min, data = dat, family = binomial)
+
+# Calculate logit (linear predictor)
+dat$logit <- predict(mod, type = "link")  # type="link" gives logit
+
+# Scatter plot of predictor vs logit
+library(ggplot2)
+
+ggplot(dat, aes(x = MET_mod_30min, y = logit)) +
+  geom_point(alpha = 0.1) +
+  geom_smooth(method = "loess", se = FALSE) +
+  labs(x = "Moderate PA (30 min units)", y = "Logit(SRF = Yes)",
+       title = "Check linearity of MET_mod in logistic regression")
+```
+
+#### 30 min increase in vig PA
+```{r}
+# Fit the model
+mod <- glm(SRF ~ MET_vig_30min, data = dat, family = binomial)
+
+# Calculate logit (linear predictor)
+dat$logit <- predict(mod, type = "link")  # type="link" gives logit
+
+# Scatter plot of predictor vs logit
+library(ggplot2)
+
+ggplot(dat, aes(x = MET_vig_30min, y = logit)) +
+  geom_point(alpha = 0.1) +
+  geom_smooth(method = "loess", se = FALSE) +
+  labs(x = "Moderate PA (30 min units)", y = "Logit(SRF = Yes)",
+       title = "Check linearity of MET_vig in logistic regression")
+```
+### Look at relationship between PA and fracture in the middle 80% of participants - ie ruling out the extremes. Does this shift to a protective effect
+
+```{r}
+# set a group of 80% activity particpants
+PA_vars <- c("MET_mod", "MET_vig", "MET_walk", "MET_MVPA")
+
+dat_middle80 <- dat
+
+for (var in PA_vars) {
+  lower <- quantile(dat[[var]], 0.10, na.rm = TRUE)
+  upper <- quantile(dat[[var]], 0.90, na.rm = TRUE)
+  
+  dat_middle80 <- dat_middle80 %>%
+    filter(.data[[var]] >= lower & .data[[var]] <= upper)
+}
+
+dat_middle80 <- dat_middle80 %>%
+  mutate(
+    MET_mod_30min  = MET_mod / 30,
+    MET_vig_30min  = MET_vig / 30,
+    MET_walk_30min = MET_walk / 30,
+    MET_MVPA_30min = MET_MVPA / 30
+  )
+```
+
+```{r}
+
+# Function to fit model and return tidy OR table
+
+
+get_OR <- function(var) {
+  formula <- as.formula(paste("SRF ~", var))
+  mod <- glm(formula, data = dat_middle80, family = binomial)
+  
+  broom::tidy(mod, exponentiate = TRUE, conf.int = TRUE) %>%
+    filter(term != "(Intercept)") %>%
+    select(term, estimate, conf.low, conf.high, p.value)
+}
+
+# Apply to all four PA variables
+OR_list <- lapply(c("MET_mod_30min", "MET_vig_30min", "MET_walk_30min", "MET_MVPA_30min"), get_OR)
+OR_table <- bind_rows(OR_list)
+
+# Optional: clean column names
+OR_table <- OR_table %>%
+  rename(
+    PA_variable = term,
+    OR = estimate,
+    `95% CI lower` = conf.low,
+    `95% CI upper` = conf.high,
+    `p-value` = p.value
+  )
+
+OR_table
+
+```
+#### With age and sex as interactions
+
+```{r}
+mod <- glm(
+  SRF ~ MET_mod_30min * agegp_A0 * sex,
+  data = dat_middle80,
+  family = binomial
+)
+
+emm <- emmeans(
+  mod,
+  ~ MET_mod_30min | agegp_A0 * sex,
+  at = list(MET_mod_30min = c(0, 1))  # per 30 min
+)
+
+
+OR_emm <- contrast(
+  emm,
+  method = "revpairwise"
+) %>%
+  summary(infer = TRUE, exp = TRUE)
+
+OR_table_emm <- OR_emm %>%
+  as.data.frame() %>%
+  transmute(
+    Age_group = agegp_A0,
+    Sex = sex,
+    OR = round(estimate, 3),
+    `95% CI lower` = round(asymp.LCL, 3),
+    `95% CI upper` = round(asymp.UCL, 3),
+    `p-value` = format.pval(p.value, digits = 3, eps = 0.001),
+    `OR (95% CI)` = paste0(
+      OR, " (", `95% CI lower`, "–", `95% CI upper`, ")"
+    )
+  ) %>%
+  select(Age_group, Sex, `OR (95% CI)`, `p-value`)
+
+
+Table_3.7 <- make_table(
+  OR_table_emm,
+  table_number = "3.7",
+  folder_path = Table_folder_path,
+  title = "Age- and sex-specific odds ratios for fracture per 30-minute increase in moderate physical activity"
+)
+
+Table_3.7
+
+```
+
+
+```{r}
+
+# Function to fit model and return tidy OR table
+
+
+get_OR <- function(var) {
+  
+  formula <- as.formula(paste("SRF ~", var, "+ agegp_A0 + sex"))
+  
+  mod <- glm(formula, data = dat_middle80, family = binomial)
+  
+  broom::tidy(mod, exponentiate = TRUE, conf.int = TRUE) %>%
+    filter(term == var) %>%              # keep only PA effect
+    transmute(
+      PA_variable = var,
+      OR = estimate,
+      `95% CI lower` = conf.low,
+      `95% CI upper` = conf.high,
+      `p-value` = p.value
+    )
+}
+PA_vars <- c("MET_mod_30min", "MET_vig_30min", 
+             "MET_walk_30min", "MET_MVPA_30min")
+
+OR_table <- bind_rows(lapply(PA_vars, get_OR))
+
+OR_table_for_make <- OR_table %>%
+  mutate(
+    OR = round(OR, 3),
+    `95% CI lower` = round(`95% CI lower`, 3),
+    `95% CI upper` = round(`95% CI upper`, 3),
+    `p-value` = format.pval(`p-value`, digits = 3, eps = 0.001),
+    `OR (95% CI)` = paste0(
+      OR, " (", `95% CI lower`, "–", `95% CI upper`, ")"
+    ),
+    PA_variable = case_when(
+      PA_variable == "MET_mod_30min"  ~ "Moderate PA (per 30 min/week)",
+      PA_variable == "MET_vig_30min"  ~ "Vigorous PA (per 30 min/week)",
+      PA_variable == "MET_walk_30min" ~ "Walking (per 30 min/week)",
+      PA_variable == "MET_MVPA_30min" ~ "MVPA (per 30 min/week)"
+    )
+  ) %>%
+  select(PA_variable, `OR (95% CI)`, `p-value`)
+
+Table_3.6 <- make_table(
+  OR_table_for_make,
+  table_number = "3.6",
+  folder_path = Table_folder_path,
+  title = "Odds ratios for fracture associated with physical activity (middle 80% of PA)"
+)
+
+Table_3.6
+
+
+```
+
+#### By different fracture site
+
+#### Hip
+```{r}
+# Function to fit model and return tidy OR table
+get_OR <- function(var) {
+  formula <- as.formula(paste("Hip ~", var))
+  mod <- glm(formula, data = dat_middle80, family = binomial)
+  
+  broom::tidy(mod, exponentiate = TRUE, conf.int = TRUE) %>%
+    filter(term != "(Intercept)") %>%
+    select(term, estimate, conf.low, conf.high, p.value)
+}
+
+# Apply to all four PA variables
+OR_list <- lapply(c("MET_mod_30min", "MET_vig_30min", "MET_walk_30min", "MET_MVPA_30min"), get_OR)
+OR_table <- bind_rows(OR_list)
+
+# Optional: clean column names
+OR_table <- OR_table %>%
+  rename(
+    PA_variable = term,
+    OR = estimate,
+    `95% CI lower` = conf.low,
+    `95% CI upper` = conf.high,
+    `p-value` = p.value
+  )
+
+OR_table
+
+```
+#### wrist
+```{r}
+# Function to fit model and return tidy OR table
+get_OR <- function(var) {
+  formula <- as.formula(paste("Wrist ~", var))
+  mod <- glm(formula, data = dat_middle80, family = binomial)
+  
+  broom::tidy(mod, exponentiate = TRUE, conf.int = TRUE) %>%
+    filter(term != "(Intercept)") %>%
+    select(term, estimate, conf.low, conf.high, p.value)
+}
+
+# Apply to all four PA variables
+OR_list <- lapply(c("MET_mod_30min", "MET_vig_30min", "MET_walk_30min", "MET_MVPA_30min"), get_OR)
+OR_table <- bind_rows(OR_list)
+
+# Optional: clean column names
+OR_table <- OR_table %>%
+  rename(
+    PA_variable = term,
+    OR = estimate,
+    `95% CI lower` = conf.low,
+    `95% CI upper` = conf.high,
+    `p-value` = p.value
+  )
+
+OR_table
+
+```
+
+### Looking at whether individuals are achieving WHO guidelines
+
+#### Looking at 4 variables
+- Meets WHO MVPA guidelines (Y/N) (150-300mins MVPA)
+- Above WHO MVPA guidelines (Y/N) (over 300 mins MVPA)
+- Meets WHO Vig guidelines (Y/N) (75-150 mins vig)
+- Above WHO Vig guidelines (Y/N) (over 150 mins vig)
+
+```{r}
+dat <- dat %>%
+  mutate(
+    # Meets WHO MVPA (150–300 min/week)
+    Meets_WHO_MVPA = if_else(mins_wk_MVPA >= 150 & mins_wk_MVPA <= 300, 1, 0),
+    
+    # Above WHO MVPA (>300 min/week)
+    Above_WHO_MVPA = if_else(mins_wk_MVPA > 300, 1, 0)
+  )
+
+dat <- dat %>%
+  mutate(
+    # Meets WHO Vigorous (75–150 min/week)
+    Meets_WHO_Vig = if_else(mins_wk_vig >= 75 & mins_wk_vig <= 150, 1, 0),
+    
+    # Above WHO Vigorous (>150 min/week)
+    Above_WHO_Vig = if_else(mins_wk_vig > 150, 1, 0)
+  )
+
+
+table(dat$Meets_WHO_MVPA)
+table(dat$Above_WHO_MVPA)
+table(dat$Meets_WHO_Vig)
+table(dat$Above_WHO_Vig)
+```
+#### Regression
+```{r}
+
+# Function to run a binary logistic regression and extract OR and CI
+get_OR_binary <- function(var, data, outcome = "SRF") {
+  formula <- as.formula(paste(outcome, "~", var))
+  
+  glm_model <- glm(formula, data = data, family = binomial)
+  
+  broom::tidy(glm_model, exponentiate = TRUE, conf.int = TRUE) %>%
+    filter(term != "(Intercept)") %>%
+    select(term, estimate, conf.low, conf.high, p.value) %>%
+    rename(
+      Variable = term,
+      OR = estimate,
+      `95% CI lower` = conf.low,
+      `95% CI upper` = conf.high,
+      `p-value` = p.value
+    ) %>%
+    mutate(Exposure = var)
+}
+
+WHO_vars <- c("Meets_WHO_MVPA", "Above_WHO_MVPA", "Meets_WHO_Vig", "Above_WHO_Vig")
+
+OR_list <- lapply(WHO_vars, get_OR_binary, data = dat)
+OR_table <- bind_rows(OR_list)
+
+# Optional: clean exposure names for readability
+OR_table <- OR_table %>%
+  mutate(
+    Exposure = case_when(
+      Exposure == "Meets_WHO_MVPA" ~ "Meets WHO MVPA (150–300 min/week)",
+      Exposure == "Above_WHO_MVPA" ~ "Above WHO MVPA (>300 min/week)",
+      Exposure == "Meets_WHO_Vig"  ~ "Meets WHO Vig (75–150 min/week)",
+      Exposure == "Above_WHO_Vig"  ~ "Above WHO Vig (>150 min/week)"
+    ))
+
+OR_table
+
+```
+#### Hip
+```{r}
+
+# Function to run a binary logistic regression and extract OR and CI
+get_OR_binary <- function(var, data, outcome = "Hip") {
+  formula <- as.formula(paste(outcome, "~", var))
+  
+  glm_model <- glm(formula, data = data, family = binomial)
+  
+  broom::tidy(glm_model, exponentiate = TRUE, conf.int = TRUE) %>%
+    filter(term != "(Intercept)") %>%
+    select(term, estimate, conf.low, conf.high, p.value) %>%
+    rename(
+      Variable = term,
+      OR = estimate,
+      `95% CI lower` = conf.low,
+      `95% CI upper` = conf.high,
+      `p-value` = p.value
+    ) %>%
+    mutate(Exposure = var)
+}
+
+WHO_vars <- c("Meets_WHO_MVPA", "Above_WHO_MVPA", "Meets_WHO_Vig", "Above_WHO_Vig")
+
+OR_list <- lapply(WHO_vars, get_OR_binary, data = dat)
+OR_table <- bind_rows(OR_list)
+
+# Optional: clean exposure names for readability
+OR_table <- OR_table %>%
+  mutate(
+    Exposure = case_when(
+      Exposure == "Meets_WHO_MVPA" ~ "Meets WHO MVPA (150–300 min/week)",
+      Exposure == "Above_WHO_MVPA" ~ "Above WHO MVPA (>300 min/week)",
+      Exposure == "Meets_WHO_Vig"  ~ "Meets WHO Vig (75–150 min/week)",
+      Exposure == "Above_WHO_Vig"  ~ "Above WHO Vig (>150 min/week)"
+    ))
+
+OR_table
+
+```
+
+#### Wrist
+
+```{r}
+
+# Function to run a binary logistic regression and extract OR and CI
+get_OR_binary <- function(var, data, outcome = "Wrist") {
+  formula <- as.formula(paste(outcome, "~", var))
+  
+  glm_model <- glm(formula, data = data, family = binomial)
+  
+  broom::tidy(glm_model, exponentiate = TRUE, conf.int = TRUE) %>%
+    filter(term != "(Intercept)") %>%
+    select(term, estimate, conf.low, conf.high, p.value) %>%
+    rename(
+      Variable = term,
+      OR = estimate,
+      `95% CI lower` = conf.low,
+      `95% CI upper` = conf.high,
+      `p-value` = p.value
+    ) %>%
+    mutate(Exposure = var)
+}
+
+WHO_vars <- c("Meets_WHO_MVPA", "Above_WHO_MVPA", "Meets_WHO_Vig", "Above_WHO_Vig")
+
+OR_list <- lapply(WHO_vars, get_OR_binary, data = dat)
+OR_table <- bind_rows(OR_list)
+
+# Optional: clean exposure names for readability
+OR_table <- OR_table %>%
+  mutate(
+    Exposure = case_when(
+      Exposure == "Meets_WHO_MVPA" ~ "Meets WHO MVPA (150–300 min/week)",
+      Exposure == "Above_WHO_MVPA" ~ "Above WHO MVPA (>300 min/week)",
+      Exposure == "Meets_WHO_Vig"  ~ "Meets WHO Vig (75–150 min/week)",
+      Exposure == "Above_WHO_Vig"  ~ "Above WHO Vig (>150 min/week)"
+    ))
+
+OR_table
+
+```
+
+#### All fracture in sex stratified analysis
+
+```{r}
+# Split dataset
+dat_female <- dat %>% filter(sex == "Female")
+dat_male   <- dat %>% filter(sex == "Male")
+
+WHO_vars <- c("Meets_WHO_MVPA", "Above_WHO_MVPA", "Meets_WHO_Vig", "Above_WHO_Vig")
+
+get_OR_binary <- function(var, data, outcome = "SRF") {
+  formula <- as.formula(paste(outcome, "~", var))
+  
+  glm_model <- glm(formula, data = data, family = binomial)
+  
+  broom::tidy(glm_model, exponentiate = TRUE, conf.int = TRUE) %>%
+    filter(term != "(Intercept)") %>%
+    select(term, estimate, conf.low, conf.high, p.value) %>%
+    rename(
+      Variable = term,
+      OR = estimate,
+      `95% CI lower` = conf.low,
+      `95% CI upper` = conf.high,
+      `p-value` = p.value
+    ) %>%
+    mutate(Exposure = var)
+}
+
+OR_list_female <- lapply(WHO_vars, get_OR_binary, data = dat_female)
+OR_table_female <- bind_rows(OR_list_female) %>%
+  mutate(
+    Exposure = case_when(
+      Exposure == "Meets_WHO_MVPA" ~ "Meets WHO MVPA (150–300 min/week)",
+      Exposure == "Above_WHO_MVPA" ~ "Above WHO MVPA (>300 min/week)",
+      Exposure == "Meets_WHO_Vig"  ~ "Meets WHO Vig (75–150 min/week)",
+      Exposure == "Above_WHO_Vig"  ~ "Above WHO Vig (>150 min/week)"
+    ),
+    Sex = "Female"
+  )
+
+OR_list_male <- lapply(WHO_vars, get_OR_binary, data = dat_male)
+OR_table_male <- bind_rows(OR_list_male) %>%
+  mutate(
+    Exposure = case_when(
+      Exposure == "Meets_WHO_MVPA" ~ "Meets WHO MVPA (150–300 min/week)",
+      Exposure == "Above_WHO_MVPA" ~ "Above WHO MVPA (>300 min/week)",
+      Exposure == "Meets_WHO_Vig"  ~ "Meets WHO Vig (75–150 min/week)",
+      Exposure == "Above_WHO_Vig"  ~ "Above WHO Vig (>150 min/week)"
+    ),
+    Sex = "Male"
+  )
+
+OR_table_sex <- bind_rows(OR_table_female, OR_table_male) %>%
+  select(Sex, Exposure, OR, `95% CI lower`, `95% CI upper`, `p-value`)
+
+OR_table_sex
+```
+
+#### Hip fracture in sex stratified analysis
+
+```{r}
+# Split dataset
+dat_female <- dat %>% filter(sex == "Female")
+dat_male   <- dat %>% filter(sex == "Male")
+
+WHO_vars <- c("Meets_WHO_MVPA", "Above_WHO_MVPA", "Meets_WHO_Vig", "Above_WHO_Vig")
+
+get_OR_binary <- function(var, data, outcome = "Hip") {
+  formula <- as.formula(paste(outcome, "~", var))
+  
+  glm_model <- glm(formula, data = data, family = binomial)
+  
+  broom::tidy(glm_model, exponentiate = TRUE, conf.int = TRUE) %>%
+    filter(term != "(Intercept)") %>%
+    select(term, estimate, conf.low, conf.high, p.value) %>%
+    rename(
+      Variable = term,
+      OR = estimate,
+      `95% CI lower` = conf.low,
+      `95% CI upper` = conf.high,
+      `p-value` = p.value
+    ) %>%
+    mutate(Exposure = var)
+}
+
+OR_list_female <- lapply(WHO_vars, get_OR_binary, data = dat_female)
+OR_table_female <- bind_rows(OR_list_female) %>%
+  mutate(
+    Exposure = case_when(
+      Exposure == "Meets_WHO_MVPA" ~ "Meets WHO MVPA (150–300 min/week)",
+      Exposure == "Above_WHO_MVPA" ~ "Above WHO MVPA (>300 min/week)",
+      Exposure == "Meets_WHO_Vig"  ~ "Meets WHO Vig (75–150 min/week)",
+      Exposure == "Above_WHO_Vig"  ~ "Above WHO Vig (>150 min/week)"
+    ),
+    Sex = "Female"
+  )
+
+OR_list_male <- lapply(WHO_vars, get_OR_binary, data = dat_male)
+OR_table_male <- bind_rows(OR_list_male) %>%
+  mutate(
+    Exposure = case_when(
+      Exposure == "Meets_WHO_MVPA" ~ "Meets WHO MVPA (150–300 min/week)",
+      Exposure == "Above_WHO_MVPA" ~ "Above WHO MVPA (>300 min/week)",
+      Exposure == "Meets_WHO_Vig"  ~ "Meets WHO Vig (75–150 min/week)",
+      Exposure == "Above_WHO_Vig"  ~ "Above WHO Vig (>150 min/week)"
+    ),
+    Sex = "Male"
+  )
+
+OR_table_sex <- bind_rows(OR_table_female, OR_table_male) %>%
+  select(Sex, Exposure, OR, `95% CI lower`, `95% CI upper`, `p-value`)
+
+OR_table_sex
+```
+
+#### Wrist fracture in sex stratified analysis
+
+```{r}
+# Split dataset
+dat_female <- dat %>% filter(sex == "Female")
+dat_male   <- dat %>% filter(sex == "Male")
+
+WHO_vars <- c("Meets_WHO_MVPA", "Above_WHO_MVPA", "Meets_WHO_Vig", "Above_WHO_Vig")
+
+get_OR_binary <- function(var, data, outcome = "Wrist") {
+  formula <- as.formula(paste(outcome, "~", var))
+  
+  glm_model <- glm(formula, data = data, family = binomial)
+  
+  broom::tidy(glm_model, exponentiate = TRUE, conf.int = TRUE) %>%
+    filter(term != "(Intercept)") %>%
+    select(term, estimate, conf.low, conf.high, p.value) %>%
+    rename(
+      Variable = term,
+      OR = estimate,
+      `95% CI lower` = conf.low,
+      `95% CI upper` = conf.high,
+      `p-value` = p.value
+    ) %>%
+    mutate(Exposure = var)
+}
+
+OR_list_female <- lapply(WHO_vars, get_OR_binary, data = dat_female)
+OR_table_female <- bind_rows(OR_list_female) %>%
+  mutate(
+    Exposure = case_when(
+      Exposure == "Meets_WHO_MVPA" ~ "Meets WHO MVPA (150–300 min/week)",
+      Exposure == "Above_WHO_MVPA" ~ "Above WHO MVPA (>300 min/week)",
+      Exposure == "Meets_WHO_Vig"  ~ "Meets WHO Vig (75–150 min/week)",
+      Exposure == "Above_WHO_Vig"  ~ "Above WHO Vig (>150 min/week)"
+    ),
+    Sex = "Female"
+  )
+
+OR_list_male <- lapply(WHO_vars, get_OR_binary, data = dat_male)
+OR_table_male <- bind_rows(OR_list_male) %>%
+  mutate(
+    Exposure = case_when(
+      Exposure == "Meets_WHO_MVPA" ~ "Meets WHO MVPA (150–300 min/week)",
+      Exposure == "Above_WHO_MVPA" ~ "Above WHO MVPA (>300 min/week)",
+      Exposure == "Meets_WHO_Vig"  ~ "Meets WHO Vig (75–150 min/week)",
+      Exposure == "Above_WHO_Vig"  ~ "Above WHO Vig (>150 min/week)"
+    ),
+    Sex = "Male"
+  )
+
+OR_table_sex <- bind_rows(OR_table_female, OR_table_male) %>%
+  select(Sex, Exposure, OR, `95% CI lower`, `95% CI upper`, `p-value`)
+
+OR_table_sex
+```

@@ -22,6 +22,11 @@ library(tidyr)
 library(purrr)
 library(table1)
 
+#set paths for saving tables later
+
+Table_folder_path <- "../results/tables"
+Figure_folder_path <- "../results/figures"
+
 # install rds from 02_data_derivation
 dat <- readRDS("data_derived/analysis_dat.Rds")
 View(dat)
@@ -104,8 +109,44 @@ table1::table1(
   overall = "Total",
 )
     
-# For simplicity in following analysis we will rename the middle aged cohort back to dat
+# For simplicity in following analysis we will rename the middle aged cohort back to dat but can use middle_aged_data in later 
+# complete case vs full cohort comparison
 dat <- middle_aged_dat
+
+# Prior to exclusions look at degree of missingness in each variable
+# duration of PA variables not included - this was a follow on questions for only those who answered num days>0
+
+vars <-c("ethnicity", "SRF", "num_days_mod_PA", "num_days_vig_PA", "num_day_walk",
+         "IPAQ", "qualification", "tdi", "WC", "weight", "height", "BMI")
+
+response_rate <- function(df, var) {
+  df %>%
+    summarise(
+      Answered = sum(!is.na(.data[[var]])),
+      Missing = sum(is.na(.data[[var]])),
+      Total = nrow(df),
+      Answered_pct = round(Answered / Total * 100, 2),
+      Missing_pct = round(Missing / Total * 100, 2)
+    ) %>%
+    mutate(Variable = var) %>%
+    select(Variable, Answered, Answered_pct, Missing, Missing_pct)
+}
+
+# Apply to all variables in dat
+Response_rates <- lapply(vars, function(v) response_rate(dat, v)) %>%
+  bind_rows()
+
+# Create and save table using function above
+
+Table_Response <- make_table(
+  Response_rates, 
+  table_number = "Response Rate", 
+  folder_path = Table_folder_path,
+  title = "Response rate and degree of missing data on activity type and days per week walking"
+)
+
+Table_Response
+
 
 ## Create a complete case analysis data set
 ## Exclusions 
@@ -238,6 +279,53 @@ complete_case_dat <- dat
 
 # Save the final dataset
 saveRDS(complete_case_dat, "data_derived/complete_case_dat.Rds")
+
+# Compare complete case set (complete_case_dat) to full set (middle_aged_data)
+
+middle_aged_dat <- middle_aged_dat %>%
+  mutate(
+    included_final = if_else(eid %in% complete_case_dat$eid, 1, 0)
+  )
+
+table(middle_aged_dat$included_final)
+
+
+middle_aged_dat <- middle_aged_dat %>%
+  mutate(
+    included_final = if_else(eid %in% complete_case_dat$eid, 1, 0),
+    included_final = factor(
+      included_final,
+      levels = c(0, 1),
+      labels = c("Full cohort", "Complete cases")
+    )
+  )
+
+# Step 2: Remove any rows where included_final is NA (just in case)
+middle_aged_dat <- middle_aged_dat %>%
+  filter(!is.na(included_final))
+
+complete_full_case_comparison <- middle_aged_dat %>%
+  tbl_summary(
+    by = included_final,  # stratify by full vs complete cases
+    include = c(ethnicity, SRF, num_days_mod_PA, num_days_vig_PA, num_day_walk, IPAQ, qualification, tdi, WC, weight, height, BMI),
+    missing = "no"
+  ) %>%
+  modify_header(label = "**Variable**") %>%
+  modify_spanning_header(all_stat_cols() ~ "**Cohort type**") 
+
+complete_full_case_comparison_gt <- complete_full_case_comparison %>%
+  as_gt() %>%   
+  tab_header(
+    title = md("**Complete vs Full Cohort Comparison**"),
+    subtitle = md("Response rate and missing data on activity type and walking days")
+  )
+
+
+gtsave(complete_full_case_comparison_gt, 
+       filename = file.path(Table_folder_path, "complete_full_case_comparison.html"))
+
+
+
 
 ## Add 'final dataset' variables
 

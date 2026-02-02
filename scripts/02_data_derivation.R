@@ -242,27 +242,42 @@ dat$BMI_category_derived <- case_when(
 
 # In UKB MET mins is derived from num days of activity and an imputed value when duration is missing.
 # For the complete case analysis we will create our own variables of mins/wk and METmins/wk with just complete data
+# When someone responded as 0 to number of days of activity they wont have been prompted on duration - we will impute 0 not NA for these
+
+# Participants reporting zero days of moderate activity were assigned zero minutes per week, recognising that duration was not collected in these cases. Complete case variables were defined accordingly.
 
 # Complete case mins/wk mod activity (cc_mins_wk_mod)
 
 dat <- dat %>%
   mutate(
-    cc_mins_wk_mod = ifelse(
-      !is.na(duration_mod_clean) & !is.na(num_days_mod_clean),
-      duration_mod_clean * num_days_mod_clean,
-      NA_real_
+    cc_mins_wk_mod = case_when(
+      num_days_mod_clean == 0 ~ 0,
+      is.na(num_days_mod_clean) ~ NA_real_,
+      is.na(duration_mod_clean) ~ NA_real_,
+      TRUE ~ duration_mod_clean * num_days_mod_clean
     )
   )
+
 # Complete case MET mins/wk mod (cc_MET_mod)
 
 dat <- dat %>%
   mutate(
-    cc_MET_mod = ifelse(
+    cc_MET_mod = if_else(
       !is.na(cc_mins_wk_mod),
       cc_mins_wk_mod * 4,
       NA_real_
     )
   )
+
+# Check code working 
+dat %>%
+  summarise(
+    n_total = n(),
+    n_NA = sum(is.na(cc_MET_mod)),
+    n_zero = sum(cc_MET_mod == 0, na.rm = TRUE),
+    n_positive = sum(cc_MET_mod > 0, na.rm = TRUE)
+  )
+
 
 # sense check - compare complete case to MET_mod and see how many eids it is different
 
@@ -286,17 +301,19 @@ n_na_or_zero
 
 dat <- dat %>%
   mutate(
-    cc_mins_wk_vig = ifelse(
-      !is.na(duration_vig_clean) & !is.na(num_days_vig_clean),
-      duration_vig_clean * num_days_vig_clean,
-      NA_real_
+    cc_mins_wk_vig = case_when(
+      num_days_vig_clean == 0 ~ 0,
+      is.na(num_days_vig_clean) ~ NA_real_,
+      is.na(duration_vig_clean) ~ NA_real_,
+      TRUE ~ duration_vig_clean * num_days_vig_clean
     )
   )
+
 # Complete case MET mins/wk vig (cc_MET_vig)
 
 dat <- dat %>%
   mutate(
-    cc_MET_vig = ifelse(
+    cc_MET_vig = if_else(
       !is.na(cc_mins_wk_vig),
       cc_mins_wk_vig * 8,
       NA_real_
@@ -307,7 +324,7 @@ dat <- dat %>%
 
 dat <- dat %>%
   mutate(
-    cc_mins_wk_MVPA = ifelse(
+    cc_mins_wk_MVPA = if_else(
       !is.na(cc_mins_wk_mod) & !is.na(cc_mins_wk_vig),
       cc_mins_wk_mod + cc_mins_wk_vig,
       NA_real_
@@ -318,7 +335,7 @@ dat <- dat %>%
 
 dat <- dat %>%
   mutate(
-    cc_MET_MVPA = ifelse(
+    cc_MET_MVPA = if_else(
       !is.na(cc_MET_mod) & !is.na(cc_MET_vig),
       cc_MET_mod + cc_MET_vig,
       NA_real_
@@ -329,17 +346,18 @@ dat <- dat %>%
 
 dat <- dat %>%
   mutate(
-    cc_mins_wk_walk = ifelse(
-      !is.na(duration_walk_clean) & !is.na(num_day_walk_clean),
-      duration_walk_clean * num_day_walk_clean,
-      NA_real_
+    cc_mins_wk_walk = case_when(
+      num_day_walk_clean == 0 ~ 0,
+      is.na(num_day_walk_clean) ~ NA_real_,
+      is.na(duration_walk_clean) ~ NA_real_,
+      TRUE ~ duration_walk_clean * num_day_walk_clean
     )
   )
 # Complete case MET mins/wk walk (cc_MET_walk)
 
 dat <- dat %>%
   mutate(
-    cc_MET_walk = ifelse(
+    cc_MET_walk = if_else(
       !is.na(cc_mins_wk_walk),
       cc_mins_wk_walk * 3.3,
       NA_real_
@@ -349,7 +367,7 @@ dat <- dat %>%
 # Complete case mins/wk summed activity (cc_mins_wk_summed)
 dat <- dat %>%
   mutate(
-    cc_mins_wk_summed = ifelse(
+    cc_mins_wk_summed = if_else(
       !is.na(cc_mins_wk_walk) & !is.na(cc_mins_wk_mod) & !is.na(cc_mins_wk_vig),
       cc_mins_wk_walk + cc_mins_wk_mod + cc_mins_wk_vig,
       NA_real_
@@ -360,7 +378,7 @@ dat <- dat %>%
 
 dat <- dat %>%
   mutate(
-    cc_MET_summed = ifelse(
+    cc_MET_summed = if_else(
       !is.na(cc_MET_walk) & !is.na(cc_MET_MVPA),
       cc_MET_walk + cc_MET_MVPA,
       NA_real_
@@ -376,7 +394,7 @@ dat$MET_mod_clean_num <- suppressWarnings(as.numeric(dat$MET_mod_clean))
 dat$MET_vig_clean_num <- suppressWarnings(as.numeric(dat$MET_vig_clean))
 dat$MET_walk_clean_num <- suppressWarnings(as.numeric(dat$MET_walk_clean))
 
-dat$MVPA_derived <- ifelse(
+dat$MVPA_derived <- if_else(
   is.na(dat$MET_mod_clean_num) & is.na(dat$MET_vig_clean_num),
   NA_real_,
   coalesce(dat$MET_mod_clean_num, 0) +
@@ -390,6 +408,20 @@ dat$MMVPA_derived_num <- suppressWarnings(as.numeric(dat$MVPA_derived))
 
 # Create a mins/wk of activity variable for comparison with accel wear
 
+# Self-reported physical activity for sensitivity (this is not complete case but uses provided data)
+# Combine M and V PA into MVPA for use in later analyses compared to MVPA in accel
+# if either mod or vig are NA then add 0, but if both are NA make NA
+
+dat$MET_mod_clean_num <- suppressWarnings(as.numeric(dat$MET_mod_clean))
+dat$MET_vig_clean_num <- suppressWarnings(as.numeric(dat$MET_vig_clean))
+dat$MET_walk_clean_num <- suppressWarnings(as.numeric(dat$MET_walk_clean))
+
+dat$MVPA_derived <- if_else(
+  is.na(dat$MET_mod_clean_num) & is.na(dat$MET_vig_clean_num),
+  NA_real_,
+  coalesce(dat$MET_mod_clean_num, 0) +
+    coalesce(dat$MET_vig_clean_num, 0)
+)
 
 ###### Outcome data variables
 

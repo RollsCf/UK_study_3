@@ -1,0 +1,19 @@
+# Data folders
+data_raw/
+data_derived/
+
+# Output files
+*.csv
+*.rds
+*.RData
+*.xlsx
+
+# OS and RStudio junk
+.Rhistory
+.Rproj.user/
+.RData
+
+# renv folders
+renv/library/
+renv/python/
+
