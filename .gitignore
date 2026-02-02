@@ -1,6 +1,7 @@
 # Data folders
 data_raw/
 data_derived/
+docs/
 
 # Output files
 *.csv
