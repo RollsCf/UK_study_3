@@ -5,10 +5,10 @@
 
 # load the files for Assessment centre 0, HES and death, 
 
-# Load cleaned datasets
-dat <- readRDS("data_derived/baseline_clean.Rds")
-death    <- readRDS("data_derived/death_clean.Rds")
-hes      <- readRDS("data_derived/hes_clean.Rds")
+dat   <- readRDS(file.path(DATA_DERIVED, "baseline_clean.Rds"))
+death <- readRDS(file.path(DATA_DERIVED, "death_clean.Rds"))
+hes   <- readRDS(file.path(DATA_DERIVED, "hes_clean.Rds"))
+
 
 
 # Derivations in baseline data
