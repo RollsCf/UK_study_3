@@ -1,29 +1,28 @@
 # This code describes the derivation of variables for use in the final analysis - it uses variables created in 01_data_cleaning.R
-# Variables that do not need derivation are recoded for ease in analysis ie BMI_raw to BMI
+# Variables that do not need derivation are renamed for ease in analysis ie BMI_raw to BMI
 
 
 
 # load the files for Assessment centre 0, HES and death, 
 
-dat   <- readRDS(file.path(DATA_DERIVED, "baseline_clean.Rds"))
-death <- readRDS(file.path(DATA_DERIVED, "death_clean.Rds"))
-hes   <- readRDS(file.path(DATA_DERIVED, "hes_clean.Rds"))
-
+dat_clean   <- readRDS(file.path(DATA_DERIVED, "baseline_clean.Rds"))
+death_clean <- readRDS(file.path(DATA_DERIVED, "death_clean.Rds"))
+hes_clean   <- readRDS(file.path(DATA_DERIVED, "hes_clean.Rds"))
 
 
 # Derivations in baseline data
 
 # Print column names
-names(dat)
+names(dat_clean)
 
 # If no derivation needed then drop the word _raw for the analysis to keep coding tight
 
-dat$ethnicity_derived <- case_when(
-  dat$ethnicity_clean %in% c(
+dat_clean$ethnicity_derived <- case_when(
+  dat_clean$ethnicity_clean %in% c(
     "White", "British", "Irish", "Any other white background"
   ) ~ "White",
   
-  dat$ethnicity_clean %in% c(
+  dat_clean$ethnicity_clean %in% c(
     "Mixed",
     "White and Black Caribbean",
     "White and Black African",
@@ -31,7 +30,7 @@ dat$ethnicity_derived <- case_when(
     "Any other mixed background"
   ) ~ "Mixed",
   
-  dat$ethnicity_clean %in% c(
+  dat_clean$ethnicity_clean %in% c(
     "Asian or Asian British",
     "Indian",
     "Pakistani",
@@ -39,7 +38,7 @@ dat$ethnicity_derived <- case_when(
     "Any other Asian background"
   ) ~ "Asian",
   
-  dat$ethnicity_clean %in% c(
+  dat_clean$ethnicity_clean %in% c(
     "Black or Black British",
     "Caribbean",
     "African",
@@ -52,15 +51,16 @@ dat$ethnicity_derived <- case_when(
 )
 
 ## Check
-table(dat$ethnicity_derived, useNA = "ifany")
+table(dat_clean$ethnicity_derived, useNA = "ifany")
+
 
 # UKB assessment centre
 # Field 54	# Assessment Centre location (A0)
 # To allow me to look at geographic variation I re-coded Assessment centre by Country it was located in.
 # Codes were as follows
 
-dat$assessment_country <- case_when(
-  dat$ukb_assess_center_raw %in% c(
+dat_clean$assessment_country <- case_when(
+  dat_clean$ukb_assess_center_raw %in% c(
     "Barts", "Birmingham", "Bristol", "Bury", "Cheadle",
     "Croydon", "Hounslow", "Leeds", "Liverpool", "Middlesbrough",
     "Newcastle", "Nottingham", "Oxford", "Reading", "Sheffield",
@@ -70,11 +70,11 @@ dat$assessment_country <- case_when(
     "Stockport (Greater Manchester)"
   ) ~ "England",
   
-  dat$ukb_assess_center_raw %in% c(
+  dat_clean$ukb_assess_center_raw %in% c(
     "Edinburgh", "Glasgow"
   ) ~ "Scotland",
   
-  dat$ukb_assess_center_raw %in% c(
+  dat_clean$ukb_assess_center_raw %in% c(
     "Cardiff", "Swansea"
   ) ~ "Wales",
   
@@ -86,13 +86,13 @@ dat$assessment_country <- case_when(
 
 # create agegroup_A0 based on age_A0_raw
 
-middle_aged_A0_dat <- dat %>%
+middle_aged_A0_dat <- dat_clean %>%
   filter(between(age_A0_raw, 40, 65))
 
 # Create age at A0 groups
-dat$agegp_A0 <-
+dat_clean$agegp_A0 <-
   cut(
-    dat$age_A0_raw,
+    dat_clean$age_A0_raw,
     breaks = c(40, 50, 60, 70, 80),
     right = FALSE,
     labels = c("40-49", "50-59", "60-69", "70-79")
@@ -101,28 +101,28 @@ dat$agegp_A0 <-
 # create age-at-accelerometer-wear variable:
   
 # Add date of birth
-dat$approx_dob_derived <-
-  as.Date(paste(dat$yob, dat$mob, "15", sep = "-"),
+dat_clean$approx_dob_derived <-
+  as.Date(paste(dat_clean$yob, dat_clean$mob, "15", sep = "-"),
           "%Y-%B-%d") # UK Biobank doesn't contain day of birth as it would be unnecessary identifying information, so we roughly impute it as the 15th of the birth month.
 
 # Add age at accel entry in days
-dat$age_accel_entry_days_derived <-
-  difftime(dat$date_end_accel_raw,
-           dat$approx_dob,
+dat_clean$age_accel_entry_days_derived <-
+  difftime(dat_clean$date_end_accel_raw,
+           dat_clean$approx_dob,
            units = "days")
 
 # Convert to age at entry in years
-dat$age_accel_entry_years <- as.double(dat$age_accel_entry_days_derived)/365.25
+dat_clean$age_accel_entry_years <- as.double(dat_clean$age_accel_entry_days_derived)/365.25
 
 # Create mid-life accel group
 
-middle_aged_accel_dat <- dat %>%
+middle_aged_accel_dat <- dat_clean %>%
   filter(between(age_accel_entry_years, 40, 65))
 
 # Create age at accel groups
-dat$age_gp_accel <-
+dat_clean$age_gp_accel <-
   cut(
-    dat$age_accel_entry_years,
+    dat_clean$age_accel_entry_years,
     breaks = c(40, 50, 60, 70, 80),
     right = FALSE,
     labels = c("40-49", "50-59", "60-69", "70-79")
@@ -176,14 +176,14 @@ derive_education_level <- function(qual_vec) {
 }
 
 # apply function
-dat$education_level <- derive_education_level(dat$qualification_raw)
+dat_clean$education_level <- derive_education_level(dat_clean$qualification_raw)
 
 # check
-table(dat$education_level, useNA = "ifany")
+table(dat_clean$education_level, useNA = "ifany")
 
 # convert to ordered factor
-dat$education_level <- factor(
-  dat$education_level,
+dat_clean$education_level <- factor(
+  dat_clean$education_level,
   levels = names(edu_levels),
   ordered = TRUE
 )
@@ -199,24 +199,26 @@ dat$education_level <- factor(
 # Men	    <94 cm	  94–102 cm	          >102 cm
 # Women	  <80 cm	  80–88 cm	          >88 cm
 
-# create variable
-dat$central_obesity_derived <- case_when(
-  dat$sex_raw == "Male" & dat$waist_circ_clean >= 102 ~ "Substantially increased risk",
-  dat$sex_raw == "Male" & dat$waist_circ_clean >= 94  ~ "Increased risk",
-  dat$sex_raw == "Male" & dat$waist_circ_clean < 94   ~ "Normal",
-  dat$sex_raw == "Female" & dat$waist_circ_clean >= 88 ~ "Substantially increased risk",
-  dat$sex_raw == "Female" & dat$waist_circ_clean >= 80 ~ "Increased risk",
-  dat$sex_raw == "Female" & dat$waist_circ_clean < 80  ~ "Normal",
-  TRUE ~ NA_character_   # for missing or unknown sex
-)
 
-# Create BMI catagories based on non sex specific WHO cut offs
-dat$BMI_category_derived <- case_when(
-  dat$BMI_clean < 25               ~ "Normal",
-  dat$BMI_clean >= 25 & dat$BMI_clean < 30 ~ "Overweight",
-  dat$BMI_clean >= 30              ~ "Obese",
-  TRUE ~ NA_character_           # for missing or invalid values
-)
+dat_clean <- dat_clean %>%
+  mutate(
+    central_obesity_derived = case_when(
+      sex_raw == "Male" & waist_circ_clean >= 102 ~ "Substantially increased risk",
+      sex_raw == "Male" & waist_circ_clean >= 94  ~ "Increased risk",
+      sex_raw == "Male" & waist_circ_clean < 94   ~ "Normal",
+      sex_raw == "Female" & waist_circ_clean >= 88 ~ "Substantially increased risk",
+      sex_raw == "Female" & waist_circ_clean >= 80 ~ "Increased risk",
+      sex_raw == "Female" & waist_circ_clean < 80  ~ "Normal",
+      TRUE ~ NA_character_
+    ),
+    BMI_category_derived = case_when(
+      BMI_clean < 25                     ~ "Normal",
+      BMI_clean >= 25 & BMI_clean < 30  ~ "Overweight",
+      BMI_clean >= 30                    ~ "Obese",
+      TRUE ~ NA_character_
+    )
+  )
+
 
 #### Physical activity measures ####
 
@@ -228,180 +230,66 @@ dat$BMI_category_derived <- case_when(
 
 # Complete case mins/wk mod activity (cc_mins_wk_mod)
 
-dat <- dat %>%
+#### Helper functions ####
+
+# Convert to numeric safely (suppress warnings)
+as_numeric_safe <- function(x) {
+  suppressWarnings(as.numeric(x))
+}
+
+# Calculate weekly minutes (0 if days==0, NA if missing)
+calc_mins_wk <- function(days, duration) {
+  case_when(
+    days == 0 ~ 0,
+    is.na(days) | is.na(duration) ~ NA_real_,
+    TRUE ~ duration * days
+  )
+}
+
+# Calculate MET from minutes with a factor
+calc_MET <- function(mins, factor) {
+  if_else(!is.na(mins), mins * factor, NA_real_)
+}
+
+# Sum multiple columns safely: NA if all NA, otherwise sum treating NA as 0
+sum_na0 <- function(...) {
+  vals <- cbind(...)
+  rowSums(vals, na.rm = TRUE) %>%
+    replace(rowSums(!is.na(vals)) == 0, NA_real_)
+}
+
+########
+
+
+dat_clean <- dat_clean %>%
   mutate(
-    cc_mins_wk_mod = case_when(
-      num_days_mod_clean == 0 ~ 0,
-      is.na(num_days_mod_clean) ~ NA_real_,
-      is.na(duration_mod_clean) ~ NA_real_,
-      TRUE ~ duration_mod_clean * num_days_mod_clean
-    )
+    ## Complete-case weekly minutes
+    cc_mins_wk_mod  = calc_mins_wk(num_days_mod_clean, duration_mod_clean),
+    cc_mins_wk_vig  = calc_mins_wk(num_days_vig_clean, duration_vig_clean),
+    cc_mins_wk_walk = calc_mins_wk(num_day_walk_clean, duration_walk_clean),
+    
+    ## Complete-case MET calculations
+    cc_MET_mod  = calc_MET(cc_mins_wk_mod, 4),
+    cc_MET_vig  = calc_MET(cc_mins_wk_vig, 8),
+    cc_MET_walk = calc_MET(cc_mins_wk_walk, 3.3),
+    
+    ## Combined MVPA (minutes & METs)
+    cc_mins_wk_MVPA = sum_na0(cc_mins_wk_mod, cc_mins_wk_vig),
+    cc_MET_MVPA     = sum_na0(cc_MET_mod, cc_MET_vig),
+    
+    ## Total summed activity (minutes & METs)
+    cc_mins_wk_summed = sum_na0(cc_mins_wk_walk, cc_mins_wk_mod, cc_mins_wk_vig),
+    cc_MET_summed     = sum_na0(cc_MET_walk, cc_MET_MVPA),
+    
+    ## Self-reported MET variables (numeric)
+    MET_mod_clean_num  = as_numeric_safe(MET_mod_clean),
+    MET_vig_clean_num  = as_numeric_safe(MET_vig_clean),
+    MET_walk_clean_num = as_numeric_safe(MET_walk_clean),
+    
+    ## Self-reported MVPA derived
+    MVPA_derived      = sum_na0(MET_mod_clean_num, MET_vig_clean_num),
+    MMVPA_derived_num = as_numeric_safe(MVPA_derived)
   )
-
-# Complete case MET mins/wk mod (cc_MET_mod)
-
-dat <- dat %>%
-  mutate(
-    cc_MET_mod = if_else(
-      !is.na(cc_mins_wk_mod),
-      cc_mins_wk_mod * 4,
-      NA_real_
-    )
-  )
-
-# Check code working 
-dat %>%
-  summarise(
-    n_total = n(),
-    n_NA = sum(is.na(cc_MET_mod)),
-    n_zero = sum(cc_MET_mod == 0, na.rm = TRUE),
-    n_positive = sum(cc_MET_mod > 0, na.rm = TRUE)
-  )
-
-
-# sense check - compare complete case to MET_mod and see how many eids it is different
-
-# Filter rows where the two values differ
-differences <- dat %>%
-  filter(!is.na(cc_MET_mod) & !is.na(MET_mod_clean)) %>%  # only compare non-missing
-  filter(cc_MET_mod != MET_mod_clean)
-
-# Count total differences
-n_different <- nrow(differences)
-
-# Count how many of those are NA or 0 in either column
-n_na_or_zero <- differences %>%
-  filter(cc_MET_mod == 0 | MET_mod_clean == 0) %>%
-  nrow()
-
-n_different
-n_na_or_zero
-
-# Complete case mins/wk vig activity (cc_mins_wk_vig)
-
-dat <- dat %>%
-  mutate(
-    cc_mins_wk_vig = case_when(
-      num_days_vig_clean == 0 ~ 0,
-      is.na(num_days_vig_clean) ~ NA_real_,
-      is.na(duration_vig_clean) ~ NA_real_,
-      TRUE ~ duration_vig_clean * num_days_vig_clean
-    )
-  )
-
-# Complete case MET mins/wk vig (cc_MET_vig)
-
-dat <- dat %>%
-  mutate(
-    cc_MET_vig = if_else(
-      !is.na(cc_mins_wk_vig),
-      cc_mins_wk_vig * 8,
-      NA_real_
-    )
-  )
-
-# Complete case mins/wk mod activity (cc_mins_wk_MVPA)
-
-dat <- dat %>%
-  mutate(
-    cc_mins_wk_MVPA = if_else(
-      !is.na(cc_mins_wk_mod) & !is.na(cc_mins_wk_vig),
-      cc_mins_wk_mod + cc_mins_wk_vig,
-      NA_real_
-    )
-  )
-
-# Complete case MET mins/wk mod (cc_MET_MVPA)
-
-dat <- dat %>%
-  mutate(
-    cc_MET_MVPA = if_else(
-      !is.na(cc_MET_mod) & !is.na(cc_MET_vig),
-      cc_MET_mod + cc_MET_vig,
-      NA_real_
-    )
-  )
-
-# Complete case mins/wk walking activity (cc_mins_wk_walk)
-
-dat <- dat %>%
-  mutate(
-    cc_mins_wk_walk = case_when(
-      num_day_walk_clean == 0 ~ 0,
-      is.na(num_day_walk_clean) ~ NA_real_,
-      is.na(duration_walk_clean) ~ NA_real_,
-      TRUE ~ duration_walk_clean * num_day_walk_clean
-    )
-  )
-# Complete case MET mins/wk walk (cc_MET_walk)
-
-dat <- dat %>%
-  mutate(
-    cc_MET_walk = if_else(
-      !is.na(cc_mins_wk_walk),
-      cc_mins_wk_walk * 3.3,
-      NA_real_
-    )
-  )
-
-# Complete case mins/wk summed activity (cc_mins_wk_summed)
-dat <- dat %>%
-  mutate(
-    cc_mins_wk_summed = if_else(
-      !is.na(cc_mins_wk_walk) & !is.na(cc_mins_wk_mod) & !is.na(cc_mins_wk_vig),
-      cc_mins_wk_walk + cc_mins_wk_mod + cc_mins_wk_vig,
-      NA_real_
-    )
-  )
-
-# Complete case MET mins/wk summed (cc_MET_summed)
-
-dat <- dat %>%
-  mutate(
-    cc_MET_summed = if_else(
-      !is.na(cc_MET_walk) & !is.na(cc_MET_MVPA),
-      cc_MET_walk + cc_MET_MVPA,
-      NA_real_
-    )
-  )
-
-
-# Self-reported physical activity for sensitivity (this is not complete case but uses provided data)
-# Combine M and V PA into MVPA for use in later analyses compared to MVPA in accel
-# if either mod or vig are NA then add 0, but if both are NA make NA
-
-dat$MET_mod_clean_num <- suppressWarnings(as.numeric(dat$MET_mod_clean))
-dat$MET_vig_clean_num <- suppressWarnings(as.numeric(dat$MET_vig_clean))
-dat$MET_walk_clean_num <- suppressWarnings(as.numeric(dat$MET_walk_clean))
-
-dat$MVPA_derived <- if_else(
-  is.na(dat$MET_mod_clean_num) & is.na(dat$MET_vig_clean_num),
-  NA_real_,
-  coalesce(dat$MET_mod_clean_num, 0) +
-    coalesce(dat$MET_vig_clean_num, 0)
-)
-
-summary(dat$MVPA_derived)
-sum(is.na(dat$MVPA_derived))
-
-dat$MMVPA_derived_num <- suppressWarnings(as.numeric(dat$MVPA_derived))
-
-# Create a mins/wk of activity variable for comparison with accel wear
-
-# Self-reported physical activity for sensitivity (this is not complete case but uses provided data)
-# Combine M and V PA into MVPA for use in later analyses compared to MVPA in accel
-# if either mod or vig are NA then add 0, but if both are NA make NA
-
-dat$MET_mod_clean_num <- suppressWarnings(as.numeric(dat$MET_mod_clean))
-dat$MET_vig_clean_num <- suppressWarnings(as.numeric(dat$MET_vig_clean))
-dat$MET_walk_clean_num <- suppressWarnings(as.numeric(dat$MET_walk_clean))
-
-dat$MVPA_derived <- if_else(
-  is.na(dat$MET_mod_clean_num) & is.na(dat$MET_vig_clean_num),
-  NA_real_,
-  coalesce(dat$MET_mod_clean_num, 0) +
-    coalesce(dat$MET_vig_clean_num, 0)
-)
 
 ###### Outcome data variables
 
