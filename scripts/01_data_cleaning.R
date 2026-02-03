@@ -1,44 +1,86 @@
 # This code describes the cleaning steps used on the raw data files for the PA and Fracture study.
+# library and file paths are in 00_setup.R
 
-# install packages
+source(here::here("scripts/00_setup.R"))
 
-install.packages("data.table")
-install.packages("dplyr")
-install.packages("e1071")
-install.packages("ggplot2")
-install.packages("readr")
-install.packages("tidyr")
-install.packages("stringr")
 
-#load libraries
+dat_raw <- fread(
+  file.path(DATA_RAW, "participant_data.csv"),
+  data.table = FALSE
+)
 
-library (data.table)
-library (dplyr)
-library (e1071)
-library (ggplot2)
-library (readr)
-library(tidyr)
-library(stringr)
+dat_death <- fread(
+  file.path(DATA_RAW, "death_data.csv"),
+  data.table = FALSE
+)
 
-# load the files for Assessment centre 0, and death
 
-dat_raw <- fread("data_raw/participant_data.csv", data.table = FALSE) 
-dat_death <- fread("data_raw/death_data.csv", data.table = FALSE)
+# ----------------------------
+# Helper Functions
+# ----------------------------
 
-# We start by keeping a subset of columns which we are likely to use from the main dat dataset:
-  
-dat <-
-  dat_raw |>
-  rename(
+# Clean character columns (trim, convert NA)
+clean_character <- function(x, na_values = c("", "Do not know", "Prefer not to answer")) {
+  x <- as.character(x)
+  x <- str_trim(x)
+  x[x %in% na_values] <- NA
+  x
+}
+
+# Clean numeric columns (trim, convert NA, keep numeric strings)
+clean_numeric <- function(x, na_values = c("", "Do not know", "Prefer not to answer")) {
+  x <- as.character(x)
+  x <- str_trim(x)
+  x[x %in% na_values] <- NA
+  numeric_mask <- str_detect(x, "^(\\d+\\.?\\d*|\\d*\\.\\d+)$")
+  x[!numeric_mask] <- NA
+  as.numeric(x)
+}
+
+# Clean age education (special case for "Never went to school")
+clean_age_education <- function(x) {
+  x <- clean_character(x)
+  x[x == "Never went to school"] <- 0
+  as.numeric(x)
+}
+
+# Apply clean_numeric to a set of columns
+clean_columns <- function(data, vars, suffix = "_clean") {
+  for (v in vars) {
+    new_name <- sub("_raw$", suffix, v)
+    data[[new_name]] <- clean_numeric(data[[v]])
+  }
+  data
+}
+
+check_completeness <- function(data, vars) {
+  sapply(data[vars], function(x) c("NA" = sum(is.na(x)), "non_NA" = sum(!is.na(x))))
+}
+
+
+# Prepare final clean dataset
+get_clean_dataset <- function(data) {
+  all_cols <- names(data)
+  clean_cols <- all_cols[grepl("_clean$", all_cols)]
+  raw_cols   <- all_cols[grepl("_raw$", all_cols)]
+  raw_cols_to_use <- raw_cols[!sub("_raw$", "_clean", raw_cols) %in% clean_cols]
+  select(data, c("eid", clean_cols, raw_cols_to_use))
+}
+
+# ----------------------------
+# Rename columns (shortened for maintainability)
+# ----------------------------
+
+rename_map <- c(
   "eid" = "eid",
-  "date_assess_A0_raw" = "Date of attending assessment centre | Instance 0" ,
+  "date_assess_A0_raw" = "Date of attending assessment centre | Instance 0",
   "ukb_assess_center_raw" = "UK Biobank assessment centre | Instance 0",
   "age_A0_raw" = "Age when attended assessment centre | Instance 0",
   "year_birth_raw" = "yob",
   "month_birth_raw" = "mob",
   "sex_raw" = "sex",
   "ethnicity_raw" = "Ethnic background | Instance 0",
-  "qualification_raw" = "Qualifications | Instance 0" ,
+  "qualification_raw" = "Qualifications | Instance 0",
   "age_education_raw" = "Age completed full time education | Instance 0",
   "tdi_raw" = "townsend_raw",
   "waist_circ_raw" = "Waist circumference | Instance 0",
@@ -72,281 +114,63 @@ dat <-
   "Summed_mins_all_raw" = "Summed minutes activity | Instance 0",
   "light_average_raw" = "Light - Overall average | Instance 0",
   "mod_average_raw" = "Moderate-Vigorous - Overall average | Instance 0",
-  "sed_average_raw" = "Sedentary - Overall average | Instance 0",
-  "quality_good_cal_raw" = "quality_good_cal",
-  "clips_before_cal_raw" = "clips_before_cal",
-  "clips_after_cal_raw" = "clips_after_cal",
-  "total_reads_raw" = "total_reads",
-  "good_quality_wear_time_raw" = "good_quality_wear_time",
-  "Overall_activity_acceleration_raw" = "Overall_activity_acceleration",
-  "start_date_accel_raw" = "start_date_accel",
-  "date_end_accel_raw" = "date_end_accel",
-  "wear_duration_raw" = "wear_duration",
-  "Arm_LM_left_raw" = "Arm_LM_left_raw",
-  "Arm_LM_right_raw" = "Arm_LM_right_raw",
-  "Leg_LM_left_raw" = "Leg_LM_left_raw",
-  "Leg_LM_right_raw" = "Leg_LM_right_raw",
-  "TBMD_T_score_raw" = "TBMD_T_score",
-  "head_BMD_raw" = "head_BMD_raw",
-  "FN_BMD_left_raw" = "FN_BMD_left_raw",
-  "FN_BMD_right_raw" = "FN_BMD_right_raw",
-  "FN_T_score_left_raw" = "FN_T_score_left",
-  "FN_T_score_right_raw" = "FN_T_score_right"
+  "sed_average_raw" = "Sedentary - Overall average | Instance 0"
 )
 
+dat <- dat_raw %>% rename(!!!rename_map)
 
-  
-# We inspect the data structure to check all columns are the types we expect:
+# ----------------------------
+# Clean special character columns
+# ----------------------------
 
-for (data in list(dat, dat_death)){
-  str(data, vec.len = 0) # vec.len = 0 avoids accidentally printing data
-}
+# Education
+dat$age_education_clean <- clean_age_education(dat$age_education_raw)
 
-#  "age_education_raw" formatted as character: Needs recoding to allow analysis 
-# There are some special values for [age completed full time education](https://biobank.ndph.ox.ac.uk/showcase/field.cgi?id=845),
-# which need to be removed before it can be coerced to numeric. Let's reformat it appropriately.
+# Ethnicity
+dat$ethnicity_clean <- clean_character(dat$ethnicity_raw)
 
-# Education 
-# Step 1: convert to character and trim
-dat <- dat %>%
-  mutate(age_education_clean = as.character(age_education_raw),
-         age_education_clean = str_trim(age_education_clean))
+# Fractures
+dat$self_reported_fracture_A0_clean <- clean_character(dat$self_reported_fracture_A0_raw)
+dat$fracture_location_A0_clean <- clean_character(dat$fracture_location_A0_raw)
 
-# Step 2: replace known special cases
-dat <- dat %>%
-  mutate(age_education_clean = ifelse(
-    age_education_clean %in% c("Do not know", "Prefer not to answer", ""), 
-    NA, age_education_clean
-  ),
-  age_education_clean = ifelse(age_education_clean == "Never went to school", 0, age_education_clean)
-  )
+# MET & IPAQ
+dat$IPAQ_clean     <- clean_character(dat$IPAQ_group_raw)
+dat$MET_mod_clean  <- clean_character(dat$MET_mod_raw)
+dat$MET_vig_clean  <- clean_character(dat$MET_vig_raw)
+dat$MET_walk_clean <- clean_character(dat$MET_walk_raw)
 
-# Step 3: now safely coerce only remaining numeric strings
-dat <- dat %>%
-  mutate(age_education_clean = as.numeric(age_education_clean))
+# ----------------------------
+# Clean numeric columns
+# ----------------------------
 
-
-# Other variables also need cleaning so NA are accurately coded as one group
-
-#Ethnicity
-dat <- dat %>%
-  mutate(
-    ethnicity_clean = as.character(ethnicity_raw),            # ensure it's character
-    ethnicity_clean = str_trim(ethnicity_clean),             # remove spaces
-    ethnicity_clean = ifelse(
-      ethnicity_clean %in% c("Do not know", "Prefer not to answer", ""), 
-      NA, 
-      ethnicity_clean
-    )
-  )
-
-# data check 
-table(dat$ethnicity_clean, useNA = "ifany")
-
-# Fracture
-
-# 1 Clean self-reported fracture column
-dat <- dat %>%
-  mutate(
-    self_reported_fracture_A0_clean = as.character(self_reported_fracture_A0_raw),  # ensure character
-    self_reported_fracture_A0_clean = str_trim(self_reported_fracture_A0_clean),   # remove spaces
-    self_reported_fracture_A0_clean = ifelse(
-      self_reported_fracture_A0_clean %in% c("Do not know", "Prefer not to answer", ""),
-      NA_character_,
-      self_reported_fracture_A0_clean
-    )
-  ) 
-
-# Clean fracture location column
-
-dat <- dat %>%
-  mutate(
-    fracture_location_A0_clean = as.character(fracture_location_A0_raw),
-    fracture_location_A0_clean = str_trim(fracture_location_A0_clean),
-    fracture_location_A0_clean = ifelse(
-      fracture_location_A0_clean %in% c("Do not know", "Prefer not to answer", ""),
-      NA_character_,
-      fracture_location_A0_clean
-    )
-  )
-
-
-# The MET catagories are derived so dont themselves have any missing data but in order to calculate how much
-# of the population had complete data that contributed to the MET calculations the intensity and quantity of PA is used and needs cleaned
-
-vars <- c(
-  "duration_mod_raw",
-  "num_days_mod_raw",
-  "duration_vig_raw",
-  "num_days_vig_raw",
-  "duration_walk_raw",
-  "num_day_walk_raw"
+# Physical activity variables
+pa_vars <- c(
+  "duration_mod_raw", "num_days_mod_raw",
+  "duration_vig_raw", "num_days_vig_raw",
+  "duration_walk_raw", "num_day_walk_raw"
 )
 
-library(stringr)
-
-clean_numeric <- function(x) {
-  # 1️⃣ Convert factors to character
-  x <- as.character(x)
-  
-  # 2️⃣ Trim whitespace
-  x <- str_trim(x)
-  
-  # 3️⃣ Replace non-responses with NA
-  x[x %in% c("Do not know", "Prefer not to answer", "")] <- NA
-  
-  # 4️⃣ Keep strings that are numeric (allow 0, decimals)
-  numeric_mask <- str_detect(x, "^(\\d+\\.?\\d*|\\d*\\.\\d+)$")
-  x[!numeric_mask] <- NA
-  
-  # 5️⃣ Convert to numeric
-  as.numeric(x)
-}
-
-
-# Add all cleaned data in as _clean in table
-
-for (v in vars) {
-  new_name <- sub("_raw$", "_clean", v)
-  dat[[new_name]] <- clean_numeric(dat[[v]])
-}
-
-# Check data to see how much missing from each PA catagory - looks like MET mins has some imputation when num days complete but duration not
-
-completeness <- sapply(
-  dat[c("duration_mod_clean", "num_days_mod_clean", "MET_mod_raw")],
-  function(x) {
-    c(
-      "NA" = sum(is.na(x)),
-      "non_NA" = sum(!is.na(x))
-    )
-  }
-)
-
-both_non_NA <- sum(
-  !is.na(dat$duration_mod_clean) &
-    !is.na(dat$num_days_mod_clean)
-)
-
-completeness
-both_non_NA
-
-# check 0 values preserved
-unique(dat$num_days_mod_clean)
-
-# IPAQ If no numeric response add NA
-
-# Create a cleaned copy of the original column
-dat$IPAQ_clean <- as.character(dat$IPAQ_group_raw)       # make sure it’s character
-dat$IPAQ_clean[trimws(dat$IPAQ_clean) == ""] <- NA       # replace empty strings with NA
-
-# Check the cleaned data
-table(dat$IPAQ_clean, useNA = "ifany")
-
-# MET Mod clean
-# Create a cleaned copy of the original column
-dat$MET_mod_clean <- as.character(dat$MET_mod_raw)       # make sure it’s character
-dat$MET_mod_clean[trimws(dat$MET_mod_clean) == ""] <- NA       # replace empty strings with NA
-
-table(dat$MET_mod_clean, useNA = "ifany")
-
-# MET Vig clean
-dat$MET_vig_clean <- as.character(dat$MET_vig_raw)       # make sure it’s character
-dat$MET_vig_clean[trimws(dat$MET_vig_clean) == ""] <- NA       # replace empty strings with NA
-
-
-table(dat$MET_vig_clean, useNA = "ifany")
-
-# MET Walk clean
-dat$MET_walk_clean <- as.character(dat$MET_walk_raw)       # make sure it’s character
-dat$MET_walk_clean[trimws(dat$MET_walk_clean) == ""] <- NA       # replace empty strings with NA
-
-
-table(dat$MET_walk_clean, useNA = "ifany")
-
+dat <- clean_columns(dat, pa_vars)
 
 # Anthropometrics
-vars <- c(
-  "height_raw",
-  "weight_raw",
-  "waist_circ_raw",
-  "BMI_raw"
-)
+anthro_vars <- c("height_raw", "weight_raw", "waist_circ_raw", "BMI_raw")
+dat <- clean_columns(dat, anthro_vars)
 
-clean_numeric <- function(x) {
-  # 1️⃣ Convert factors to character
-  x <- as.character(x)
-  
-  # 2️⃣ Trim whitespace
-  x <- str_trim(x)
-  
-  # 3️⃣ Replace non-responses with NA
-  x[x %in% c("Do not know", "Prefer not to answer", "", NA)] <- NA
-  
-  # 4️⃣ Only keep strings that are purely numeric
-  numeric_mask <- str_detect(x, "^\\d*\\.?\\d+$")  # integers or decimals
-  x[!numeric_mask] <- NA
-  
-  # 5️⃣ Convert to numeric
-  as.numeric(x)
-}
+# ----------------------------
+# Check completeness (optional)
+# ----------------------------
+check_completeness(dat, c("duration_mod_clean", "num_days_mod_clean", "MET_mod_raw"))
+check_completeness(dat, c("height_clean", "weight_clean", "waist_circ_clean", "BMI_clean"))
 
-# Add all cleaned data in as _clean in table
+# ----------------------------
+# Prepare final clean dataset
+# ----------------------------
+baseline_clean <- get_clean_dataset(dat)
 
-for (v in vars) {
-  new_name <- sub("_raw$", "_clean", v)
-  dat[[new_name]] <- clean_numeric(dat[[v]])
-}
-
-# Check data to see how much missing from each PA catagory - looks like MET mins is just when complete data 
-# in both catagories
-
-completeness <- sapply(
-  dat[c("height_clean", "weight_clean", "waist_circ_clean", "BMI_clean")],
-  function(x) {
-    c(
-      "NA" = sum(is.na(x)),
-      "non_NA" = sum(!is.na(x))
-    )
-  }
-)
-
-completeness
+# Save cleaned dataset
+saveRDS(baseline_clean, file.path(DATA_DERIVED, "baseline_clean.rds"))
 
 
-#Preparation for time to event analysis
-
-# # We also do some simple formatting of date columns:
-#   
-# # Tabular participant data
-# dat$date_assess_A0_raw <-as.Date(dat$date_assess_A0_raw, format = "%Y-%m-%d")
-# dat$lost_to_fu_raw <- as.Date(dat$lost_to_fu_raw, format = "%Y-%m-%d")
-# dat$date_end_accel <- as.Date(dat$date_end_accel, format = "%Y-%m-%d")
-#  
-
-# Create a new dataset ready for derivations and save cleaned outputs
-
-# All column names
-all_cols <- names(dat)
-
-# Columns that have _clean
-clean_cols <- all_cols[grepl("_clean$", all_cols)]
-
-# Columns that have _raw
-raw_cols <- all_cols[grepl("_raw$", all_cols)]
-
-# Keep only raw columns that don't have a corresponding _clean
-raw_cols_to_use <- raw_cols[!sub("_raw$", "_clean", raw_cols) %in% clean_cols]
-
-# Combine clean + remaining raw
-cols_for_clean <- c("eid", clean_cols, raw_cols_to_use)
-
-# Pull into a new dataset for derivation
-baseline_clean <- dat %>%
-  select(all_of(cols_for_clean))
-
-# Save the clean dataset
-saveRDS(baseline_clean, "data_derived/baseline_clean.Rds")
 
 
 ########################################################################################################################
@@ -354,6 +178,7 @@ saveRDS(baseline_clean, "data_derived/baseline_clean.Rds")
 # Death data
 dat_death$date_death <-
   as.Date(dat_death$date_of_death, format = "%Y-%m-%d")
+
 # A very small number of participants have duplicate records in death data (e.g. perhaps from a second death certificate after post-mortem)
 # In this dataset we keep just one record per participant: they should have the same date, and we will use the death_cause dataset for any 
 # other records related to death. It also only affects a very small number of participants.
@@ -362,14 +187,23 @@ dat_death <-
   dat_death[dat_death$ins_index == 0, ]
 
 # Save cleaned outputs
-saveRDS(dat_death, "data_derived/death_clean.Rds")
+saveRDS(
+  dat_death,
+  file.path(DATA_DERIVED, "death_clean.rds")
+)
+
 
 ################################################################################################################################
 
 # HES data
 # hes is a combination of admissions and diagnosis details merged prior to download. These contain all of the ICD-10 and ICD-9 codes for participants in the UKBiobank.
 # Load data
-hes <- fread("data_raw/hes_data.csv", data.table=F, na.strings="")
+
+hes <- fread(
+  file.path(DATA_RAW, "hes_data.csv"),
+  data.table = FALSE
+)
+
 
 # To make data handling easier I have made a new data frame with just the eid, episode start date (epistart), the admission date (admidate), 
 # and the newly processed ICD-10 code. This is saved to data_clean file as dat_hes_clean.csv to use in further processing/assessment.
@@ -571,7 +405,13 @@ HES_clean <- HES_clean_ICD10 %>%
 num_unique_eid <-length(unique(HES_clean$eid))
 print(num_unique_eid)
 
-saveRDS(HES_clean, "data_derived/hes_clean.Rds")
+# Save cleaned HES
+
+saveRDS(
+  HES_clean,
+  file.path(DATA_DERIVED, "hes_clean.rds")
+)
+
 
 # data check
 # To make sure this is the most recent HES set we will now group by injury date from most to least recent
@@ -582,5 +422,4 @@ HES_clean <- HES_clean %>%
 
 ###########################################################################################
 
-# No cleaning applied to accelerometry data - this will be processed in the next step
 
