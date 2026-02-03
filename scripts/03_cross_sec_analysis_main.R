@@ -1,31 +1,56 @@
 # This script details the cross-sectional analysis looking at self-reported physical activity and self-reported fracture risk
 
-# install packages
 
-install.packages("data.table")
-install.packages("dplyr")
-install.packages("e1071")
-install.packages("ggplot2")
-install.packages("readr")
-install.packages("tidyr")
-install.packages("purrr")
-install.packages("table1")
 
-#load libraries
+# The following processing steps will create automated table outputs
 
-library (data.table)
-library (dplyr)
-library (e1071)
-library (ggplot2)
-library (readr)
-library(tidyr)
-library(purrr)
-library(table1)
-
-#set paths for saving tables later
-
+# Create folder path for Table and Figure results
 Table_folder_path <- "../results/tables"
 Figure_folder_path <- "../results/figures"
+
+
+# Function to make table from summary data
+make_table <- function(summary_df, table_number, folder_path, title = NULL) {
+  
+  ft <- summary_df |>
+    flextable() |>
+    autofit() |>
+    theme_vanilla()
+  
+  save_flextable(ft, table_number, folder_path, title)
+  
+  ft  # return the table for printing in markdown
+}
+
+# Function to save flextable outputs to word
+
+save_flextable <- function(ft, table_number, folder_path, title = NULL) {
+  # ensure folder exists
+  if (!dir.exists(folder_path)) dir.create(folder_path, recursive = TRUE)
+  
+  # construct path
+  file_name <- paste0("Table_", table_number, ".docx")
+  file_path <- file.path(folder_path, file_name)
+  
+  # start doc
+  doc <- read_docx()
+  
+  # add title (only if provided)
+  if (!is.null(title)) {
+    full_title <- paste0("Table ", table_number, ": ", title)
+    doc <- doc |>
+      body_add_par(full_title, style = "Normal") |>
+      body_add_par("", style = "Normal")  # blank line
+  }
+  
+  # add the table and save
+  doc <- doc |> body_add_flextable(ft)
+  print(doc, target = file_path)
+  
+  message("Saved: ", file_path)
+  invisible(file_path)
+}
+
 
 # install rds from 02_data_derivation
 dat <- readRDS("data_derived/analysis_dat.Rds")
@@ -272,8 +297,19 @@ tab_exc <- rbind(
   )
 )
 
-
 View (tab_exc)
+
+
+
+png(
+  filename = file.path(Figure_folder_path, "Exclusion_table.png"),
+  width = 1200,
+  height = 800,
+  res = 150
+)
+
+
+
 
 complete_case_dat <- dat
 

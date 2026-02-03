@@ -1,27 +1,7 @@
 # This code describes the derivation of variables for use in the final analysis - it uses variables created in 01_data_cleaning.R
 # Variables that do not need derivation are recoded for ease in analysis ie BMI_raw to BMI
 
-# install packages
 
-install.packages("data.table")
-install.packages("dplyr")
-install.packages("e1071")
-install.packages("ggplot2")
-install.packages("readr")
-install.packages("tidyr")
-install.packages("purrr")
-install.packages("stringr")
-
-#load libraries
-
-library (data.table)
-library (dplyr)
-library (e1071)
-library (ggplot2)
-library (readr)
-library(tidyr)
-library(purrr)
-library(stringr)
 
 # load the files for Assessment centre 0, HES and death, 
 
