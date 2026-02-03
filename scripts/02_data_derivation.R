@@ -1,16 +1,14 @@
 # This code describes the derivation of variables for use in the final analysis - it uses variables created in 01_data_cleaning.R
 # Variables that do not need derivation are renamed for ease in analysis ie BMI_raw to BMI
 
-
+source(here::here("scripts/00_setup.R"))
 
 # load the files for Assessment centre 0, HES and death, 
 
 dat_clean   <- readRDS(file.path(DATA_DERIVED, "baseline_clean.Rds"))
-death_clean <- readRDS(file.path(DATA_DERIVED, "death_clean.Rds"))
-hes_clean   <- readRDS(file.path(DATA_DERIVED, "hes_clean.Rds"))
 
+#### Derivations for cross-sectional analysis ##################
 
-# Derivations in baseline data
 
 # Print column names
 names(dat_clean)
@@ -105,28 +103,7 @@ dat_clean$approx_dob_derived <-
   as.Date(paste(dat_clean$yob, dat_clean$mob, "15", sep = "-"),
           "%Y-%B-%d") # UK Biobank doesn't contain day of birth as it would be unnecessary identifying information, so we roughly impute it as the 15th of the birth month.
 
-# Add age at accel entry in days
-dat_clean$age_accel_entry_days_derived <-
-  difftime(dat_clean$date_end_accel_raw,
-           dat_clean$approx_dob,
-           units = "days")
 
-# Convert to age at entry in years
-dat_clean$age_accel_entry_years <- as.double(dat_clean$age_accel_entry_days_derived)/365.25
-
-# Create mid-life accel group
-
-middle_aged_accel_dat <- dat_clean %>%
-  filter(between(age_accel_entry_years, 40, 65))
-
-# Create age at accel groups
-dat_clean$age_gp_accel <-
-  cut(
-    dat_clean$age_accel_entry_years,
-    breaks = c(40, 50, 60, 70, 80),
-    right = FALSE,
-    labels = c("40-49", "50-59", "60-69", "70-79")
-  )
 
 # derive new education levels
 # define education level ranking
@@ -293,109 +270,50 @@ dat_clean <- dat_clean %>%
 
 ###### Outcome data variables
 
+# Create binary fracture indicator for a given bone
+
+# Define fracture sites
 fracture_sites <- c("Ankle", "Leg", "Hip", "Spine", "Wrist", "Arm", "Other bone")
 
-dat <- dat %>%
-  mutate(
-    fracture_list = str_split(fracture_location_A0_clean, "\\|"),
-    
-    Ankle = case_when(
-      map_lgl(fracture_list, ~ "Ankle" %in% .x) ~ 1L,
-      self_reported_fracture_A0_clean %in% c("Yes", "No") ~ 0L,
-      TRUE ~ NA_integer_
-    ),
-    
-    Leg = case_when(
-      map_lgl(fracture_list, ~ "Leg" %in% .x) ~ 1L,
-      self_reported_fracture_A0_clean %in% c("Yes", "No") ~ 0L,
-      TRUE ~ NA_integer_
-    ),
-    
-    Hip = case_when(
-      map_lgl(fracture_list, ~ "Hip" %in% .x) ~ 1L,
-      self_reported_fracture_A0_clean %in% c("Yes", "No") ~ 0L,
-      TRUE ~ NA_integer_
-    ),
-    
-    Spine = case_when(
-      map_lgl(fracture_list, ~ "Spine" %in% .x) ~ 1L,
-      self_reported_fracture_A0_clean %in% c("Yes", "No") ~ 0L,
-      TRUE ~ NA_integer_
-    ),
-    
-    Wrist = case_when(
-      map_lgl(fracture_list, ~ "Wrist" %in% .x) ~ 1L,
-      self_reported_fracture_A0_clean %in% c("Yes", "No") ~ 0L,
-      TRUE ~ NA_integer_
-    ),
-    
-    Arm = case_when(
-      map_lgl(fracture_list, ~ "Arm" %in% .x) ~ 1L,
-      self_reported_fracture_A0_clean %in% c("Yes", "No") ~ 0L,
-      TRUE ~ NA_integer_
-    ),
-    
-    `Other bone` = case_when(
-      map_lgl(fracture_list, ~ "Other bone" %in% .x) ~ 1L,
-      self_reported_fracture_A0_clean %in% c("Yes", "No") ~ 0L,
-      TRUE ~ NA_integer_
-    )
-  ) %>%
-  select(-fracture_list)
+# Helper function
+fracture_indicator <- function(fracture_list, bone_name, self_reported) {
+  case_when(
+    map_lgl(fracture_list, ~ bone_name %in% .x) ~ 1L,
+    self_reported %in% c("Yes", "No") ~ 0L,
+    TRUE ~ NA_integer_
+  )
+}
+
+dat_clean <- dat_clean %>%
+  mutate(fracture_list = str_split(fracture_location_A0_clean, "\\|")) %>%
+  # Dynamically create columns for all bones
+  { 
+    tmp <- .
+    for(bone in fracture_sites) {
+      tmp[[bone]] <- fracture_indicator(tmp$fracture_list, bone, tmp$self_reported_fracture_A0_clean)
+    }
+    tmp
+  } %>%
+  select(-fracture_list) 
 
 
 
-### HES fracture measures ####
+# Save dataset with derivations for analysis
+analysis_dat <- dat_clean
 
-# Based on previous work we will use 2 fracture catagories
-
-#  Wrist
-#  Hip
-
-# with sensitivity analysis on any
- 
-hes$All_fracture_hes <- ifelse(
-  grepl(
-    paste(
-      "S02\\.[0-9]",                  # frac_head (not tooth)
-      "S12\\.[0-2]|S12\\.[7-9]",       # frac_Cx
-      "S22\\.[0-5]|S22\\.[8-9]",       # frac_Tx
-      "S32\\.[0-5]|S32\\.[7-8]",       # frac_Lx_pelvis
-      "S42\\.[0-4]|S42\\.[7-9]",       # frac_Sh_arm
-      "S52\\.[0-9]",                   # frac_Elb_farm
-      "S62\\.[0-8]",                   # frac_Hand_carpal
-      "S72\\.[0-4]|S72\\.[7-9]",       # frac_Hip_thigh
-      "S82\\.[0-9]",                   # frac_Knee_LL
-      "S92\\.[0-5]|S92\\.[7-9]",       # frac_Ankle_ft
-      sep = "|"
-    ),
-    hes$diag_icd10_full
-  ),
-  1, 0
+saveRDS(
+  analysis_dat,
+  file.path(DATA_DERIVED, "analysis_dat.rds")
 )
 
-# Wrist
-
-hes$Wrist_HES <- ifelse(
-  grepl("S52\\.[5-6]", hes$diag_icd10_full) |
-    grepl("S62\\.[0-1]", hes$diag_icd10_full),
-  1, 0
-)
-
-# Hip
-
-hes$Hip_HES <- ifelse(
-  grepl("S72\\.[0-2]", hes$diag_icd10_full),
-  1, 0
-)
-
-# Pull into a new dataset for analysis
-analysis_dat <- dat 
-
-# Save the clean dataset
-saveRDS(analysis_dat, "data_derived/analysis_dat.rds")
 
 ########################### Measures for time-to-event analysis #############################
+
+death_clean <- readRDS(file.path(DATA_DERIVED, "death_clean.Rds"))
+hes_clean   <- readRDS(file.path(DATA_DERIVED, "hes_clean.Rds"))
+
+
+
 # Time to event measure
 # Time to fracture
 # Person time at risk - Will need to work out the censoring dates to do this?
@@ -533,4 +451,77 @@ aggregate(dat$fu_years, list(dat$ind_inc_cvd), FUN = function(x) {round(median(x
 
 # Max follow up date by assessment centre
 aggregate(dat$date_fu, list(dat$ukb_assess_cent), FUN = max)
+
+
+############# Additional values for TTE analysis  ##########################
+
+
+# Add age at accel entry in days
+dat_clean$age_accel_entry_days_derived <-
+  difftime(dat_clean$date_end_accel_raw,
+           dat_clean$approx_dob,
+           units = "days")
+
+# Convert to age at entry in years
+dat_clean$age_accel_entry_years <- as.double(dat_clean$age_accel_entry_days_derived)/365.25
+
+# Create mid-life accel group
+
+middle_aged_accel_dat <- dat_clean %>%
+  filter(between(age_accel_entry_years, 40, 65))
+
+# Create age at accel groups
+dat_clean$age_gp_accel <-
+  cut(
+    dat_clean$age_accel_entry_years,
+    breaks = c(40, 50, 60, 70, 80),
+    right = FALSE,
+    labels = c("40-49", "50-59", "60-69", "70-79")
+  )
+
+### HES fracture measures ####
+
+# Based on previous work we will use 2 fracture catagories
+
+#  Wrist
+#  Hip
+
+# with sensitivity analysis on any
+
+any_fracture <- function(codes, diag) {
+  ifelse(grepl(paste(codes, collapse="|"), diag), 1, 0)
+}
+
+# Example:
+fracture_codes <- c(
+  "S02\\.[0-9]", "S12\\.[0-2]|S12\\.[7-9]", "S22\\.[0-5]|S22\\.[8-9]",
+  "S32\\.[0-5]|S32\\.[7-8]", "S42\\.[0-4]|S42\\.[7-9]", "S52\\.[0-9]",
+  "S62\\.[0-8]", "S72\\.[0-4]|S72\\.[7-9]", "S82\\.[0-9]", "S92\\.[0-5]|S92\\.[7-9]"
+)
+
+hes_clean$all_fracture_hes <- any_fracture(fracture_codes, hes_clean$diag_icd10_full)
+
+
+# Wrist
+
+hes_clean$wrist_hes <- ifelse(
+  grepl("S52\\.[5-6]", hes_clean$diag_icd10_full) |
+    grepl("S62\\.[0-1]", hes_clean$diag_icd10_full),
+  1, 0
+)
+
+# Hip
+
+hes_clean$hip_hes <- ifelse(
+  grepl("S72\\.[0-2]", hes_clean$diag_icd10_full),
+  1, 0
+)
+
+# pull into new dataset for analysis
+
+analysis_dat <- dat_clean %>%
+  left_join(
+    hes_clean %>% select(eid, all_fracture_hes, wrist_hes, hip_hes),
+    by = "eid"
+  )
 

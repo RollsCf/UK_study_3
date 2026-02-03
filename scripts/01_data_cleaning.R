@@ -9,11 +9,8 @@ dat_raw <- fread(
   data.table = FALSE
 )
 
-dat_death <- fread(
-  file.path(DATA_RAW, "death_data.csv"),
-  data.table = FALSE
-)
 
+#### Data for cross sectional analysis ###################
 
 # ----------------------------
 # Helper Functions
@@ -114,7 +111,8 @@ rename_map <- c(
   "Summed_mins_all_raw" = "Summed minutes activity | Instance 0",
   "light_average_raw" = "Light - Overall average | Instance 0",
   "mod_average_raw" = "Moderate-Vigorous - Overall average | Instance 0",
-  "sed_average_raw" = "Sedentary - Overall average | Instance 0"
+  "sed_average_raw" = "Sedentary - Overall average | Instance 0",
+  "date_end_accel_raw" = "date_end_accel"
 )
 
 dat <- dat_raw %>% rename(!!!rename_map)
@@ -173,7 +171,15 @@ saveRDS(baseline_clean, file.path(DATA_DERIVED, "baseline_clean.rds"))
 
 
 
-########################################################################################################################
+################################################################################################################################
+
+# Additional derivations needed for TTE analysis
+
+
+dat_death <- fread(
+  file.path(DATA_RAW, "death_data.csv"),
+  data.table = FALSE
+)
 
 # Death data
 dat_death$date_death <-
@@ -192,11 +198,13 @@ saveRDS(
   file.path(DATA_DERIVED, "death_clean.rds")
 )
 
+##### HES #######
 
-################################################################################################################################
 
 # HES data
-# hes is a combination of admissions and diagnosis details merged prior to download. These contain all of the ICD-10 and ICD-9 codes for participants in the UKBiobank.
+# hes is a combination of admissions and diagnosis details merged prior to download. 
+# These contain all of the ICD-10 codes for participants in the UKBiobank. 
+# We have chosen not to use the ICD-9 codes as these cover dates prior to 1997 in just Wales and Scotland
 # Load data
 
 hes <- fread(
@@ -211,7 +219,7 @@ hes <- fread(
 # Extract columns eid, epistart, admidate and ICD10_CODE into new df called hes_diag
 
 hes_diag <- hes %>%
-  select(eid, epistart, admidate,date_injury, diag_icd10, diag_icd9)
+  select(eid, epistart, admidate,date_injury, diag_icd10)
 
 # Event data
 # I have created a 'date_injury' at which the fracture event occured. For this I have used the admissions date (admidate).
@@ -223,7 +231,7 @@ hes_diag <- hes %>%
 # Filter rows where ICD10_Code starts with 'S'
 hes_filtered <- hes_diag %>%
   filter(
-    grepl("^S", diag_icd10) | grepl("^S", diag_icd9)
+    grepl("^S", diag_icd10) 
   )
 
 #UKB removes the decimal place, for filtering out of non fracture ortho codes we need to put it back in.
@@ -248,15 +256,14 @@ insert_icd10_decimal <- function(x) {
 # Apply to your filtered HES dataframe
 hes_filtered <- hes_filtered %>%
   mutate(
-    diag_icd10_full = insert_icd10_decimal(diag_icd10),
-    diag_icd9_full  = insert_icd10_decimal(diag_icd9)
+    diag_icd10_full = insert_icd10_decimal(diag_icd10)
   )
 
 
-HES_trimmed <- hes_filtered %>%
+hes_trimmed <- hes_filtered %>%
   mutate(
-    diag_icd10_trimmed = sub("\\.([0-9])[0-9]+$", ".\\1", diag_icd10_full),
-    diag_icd9_trimmed  = sub("\\.([0-9])[0-9]+$", ".\\1", diag_icd9_full)
+    diag_icd10_trimmed = sub("\\.([0-9])[0-9]+$", ".\\1", diag_icd10_full)
+    
   )
 
 
@@ -275,37 +282,33 @@ Ortho_codes <- c(
 )
 
 # Filter rows based on matching ICD10_Code with regex patterns in Ortho_codes
-HES_filtered <- HES_trimmed %>%
+hes_filtered <- hes_trimmed %>%
   filter(
     sapply(1:nrow(.), function(i) {
       code10 <- diag_icd10_trimmed[i]
-      code9  <- diag_icd9_trimmed[i]
-      any(sapply(Ortho_codes, function(pattern) grepl(pattern, code10))) |
-        any(sapply(Ortho_codes, function(pattern) grepl(pattern, code9)))
+      any(sapply(Ortho_codes, function(pattern) grepl(pattern, code10))) 
     })
   )
 
-num_unique_eid <- length(unique(HES_filtered$eid))
+num_unique_eid <- length(unique(hes_filtered$eid))
 print(num_unique_eid)
 
 
 ### find duplicates in diag_icd10 ###
 
-HES_check_duplicates <- HES_filtered %>%
+hes_check_duplicates <- hes_filtered %>%
   group_by(eid, date_injury, diag_icd10_trimmed) %>%
   summarise(count = n(), .groups = "drop") %>%
   filter(count > 1)
 
 # View the result
-View(HES_check_duplicates)
+View(hes_check_duplicates)
 
-num_unique_eid <-length(unique(HES_check_duplicates$eid))
-print(num_unique_eid)
 
 #### remove duplicated data i.e exact matches that have been entered more than once for the same date
 
 # Remove duplicates, keeping only the first occurrence
-HES_filtered_no_duplicates <- HES_filtered %>%
+hes_filtered_no_duplicates <- hes_filtered %>%
   group_by(eid, date_injury) %>%
   filter(!duplicated(diag_icd10_trimmed)) %>%
   ungroup()
@@ -313,29 +316,6 @@ HES_filtered_no_duplicates <- HES_filtered %>%
 num_unique_eid <-length(unique(HES_filtered_no_duplicates$eid))
 print(num_unique_eid)
 
-# Repeat for ICD9
-
-HES_check_duplicates <- HES_filtered %>%
-  group_by(eid, date_injury, diag_icd9_trimmed) %>%
-  summarise(count = n(), .groups = "drop") %>%
-  filter(count > 1)
-
-# View the result
-View(HES_check_duplicates)
-
-num_unique_eid <-length(unique(HES_check_duplicates$eid))
-print(num_unique_eid)
-
-#### remove duplicated data i.e exact matches that have been entered more than once for the same date
-
-# Remove duplicates, keeping only the first occurrence
-HES_filtered_no_duplicates <- HES_filtered %>%
-  group_by(eid, date_injury) %>%
-  filter(!duplicated(diag_icd9_trimmed)) %>%
-  ungroup()
-
-num_unique_eid <-length(unique(HES_filtered_no_duplicates$eid))
-print(num_unique_eid)
 
 # Washout 
 
@@ -373,37 +353,7 @@ HES_clean_ICD10 <- HES_filtered_no_duplicates %>%
   # Ungroup the data
   ungroup()
 
-# and ICD9
-HES_clean <- HES_clean_ICD10 %>%
-  mutate(date_injury = as.Date(date_injury)) %>%
-  
-  # Group by EID and Ortho_code
-  group_by(eid, diag_icd9_trimmed) %>%
-  
-  # Sort entries by startdate within each group
-  arrange(date_injury, .by_group = TRUE) %>%
-  
-  # Apply washout period logic
-  mutate(
-    keep_entry = case_when(
-      is.na(lag(date_injury)) ~ TRUE,  # Keep the first occurrence
-      (date_injury - lag(date_injury)) > 365 ~ TRUE,  # Keep if more than 1 year apart
-      TRUE ~ FALSE  # Exclude if within 1 year of the previous entry
-    )
-  ) %>%
-  
-  # Keep only the entries marked as TRUE
-  filter(keep_entry) %>%
-  
-  # Drop temporary column
-  select(-keep_entry) %>%
-  
-  # Ungroup the data
-  ungroup()
 
-
-num_unique_eid <-length(unique(HES_clean$eid))
-print(num_unique_eid)
 
 # Save cleaned HES
 

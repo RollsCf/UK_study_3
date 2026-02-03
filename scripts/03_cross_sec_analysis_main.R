@@ -1,63 +1,14 @@
-# This script details the cross-sectional analysis looking at self-reported physical activity and self-reported fracture risk
+# This script details the cross-sectional analysis looking at self-reported physical activity 
+# and self-reported fracture risk using the data cleaned and derived in 01_data_cleaning.R and 02_data_derivation.R
 
+source(here::here("scripts/00_setup.R"))
+library(table1)
 
-
-# The following processing steps will create automated table outputs
-
-# Create folder path for Table and Figure results
-Table_folder_path <- "../results/tables"
-Figure_folder_path <- "../results/figures"
-
-
-# Function to make table from summary data
-make_table <- function(summary_df, table_number, folder_path, title = NULL) {
-  
-  ft <- summary_df |>
-    flextable() |>
-    autofit() |>
-    theme_vanilla()
-  
-  save_flextable(ft, table_number, folder_path, title)
-  
-  ft  # return the table for printing in markdown
-}
-
-# Function to save flextable outputs to word
-
-save_flextable <- function(ft, table_number, folder_path, title = NULL) {
-  # ensure folder exists
-  if (!dir.exists(folder_path)) dir.create(folder_path, recursive = TRUE)
-  
-  # construct path
-  file_name <- paste0("Table_", table_number, ".docx")
-  file_path <- file.path(folder_path, file_name)
-  
-  # start doc
-  doc <- read_docx()
-  
-  # add title (only if provided)
-  if (!is.null(title)) {
-    full_title <- paste0("Table ", table_number, ": ", title)
-    doc <- doc |>
-      body_add_par(full_title, style = "Normal") |>
-      body_add_par("", style = "Normal")  # blank line
-  }
-  
-  # add the table and save
-  doc <- doc |> body_add_flextable(ft)
-  print(doc, target = file_path)
-  
-  message("Saved: ", file_path)
-  invisible(file_path)
-}
-
-
-# install rds from 02_data_derivation
-dat <- readRDS("data_derived/analysis_dat.Rds")
-View(dat)
+# Load processed data from previous scripts
+analysis_dat  <- readRDS(file.path(DATA_DERIVED, "analysis_dat.Rds"))
 
 # Select variables for cross sectional analysis
-dat <- dat %>%
+analysis_dat <-analysis_dat %>%
   select (
     eid,
     age_education = age_education_clean,
@@ -105,7 +56,7 @@ dat <- dat %>%
     
     # Create middle aged cohort A0 for all subsequent analysis
 
-middle_aged_dat <- dat %>%
+middle_aged_dat <- analysis_dat %>%
   filter(between(age_A0, 40, 65))
 
 # # create 10 year age groups
@@ -128,18 +79,20 @@ middle_aged_dat <- middle_aged_dat %>%
 
 
 # Stratified by sex
+
 table1::table1(
   ~ age_A0 + ethnicity + tdi + qualification + weight + height + WC + BMI + SRF + Wrist + Hip + IPAQ |sex, 
   data = middle_aged_dat,
   overall = "Total",
 )
-    
-# For simplicity in following analysis we will rename the middle aged cohort back to dat but can use middle_aged_data in later 
-# complete case vs full cohort comparison
-dat <- middle_aged_dat
 
+    
+
+# complete case vs full cohort comparison
 # Prior to exclusions look at degree of missingness in each variable
 # duration of PA variables not included - this was a follow on questions for only those who answered num days>0
+
+
 
 vars <-c("ethnicity", "SRF", "num_days_mod_PA", "num_days_vig_PA", "num_day_walk",
          "IPAQ", "qualification", "tdi", "WC", "weight", "height", "BMI")
@@ -158,20 +111,17 @@ response_rate <- function(df, var) {
 }
 
 # Apply to all variables in dat
-Response_rates <- lapply(vars, function(v) response_rate(dat, v)) %>%
+Response_rates <- lapply(vars, function(v) response_rate(middle_aged_dat, v)) %>%
   bind_rows()
 
-# Create and save table using function above
 
-Table_Response <- make_table(
-  Response_rates, 
-  table_number = "Response Rate", 
-  folder_path = Table_folder_path,
+# Save the table directly to Word
+save_table_word(
+  df = Response_rates,  # your data frame
+  table_number = "Response_Rate",  # can be numeric or string
+  folder_path = TABLES_DIR,       # uses setup-defined folder
   title = "Response rate and degree of missing data on activity type and days per week walking"
 )
-
-Table_Response
-
 
 ## Create a complete case analysis data set
 ## Exclusions 
@@ -189,127 +139,115 @@ tab_exc <- data.frame("Exclusion" = "Starting cohort (age 40-65)",
 # First, we exclude participants with missing fracture data
 
 # Store number before exclusion
-nb <- nrow(dat)
+nb <- nrow(middle_aged_dat)
+
 # Exclude rows with NA in SRF
-dat <- dat[!is.na(dat$SRF), ]
+middle_aged_dat <- middle_aged_dat[!is.na(middle_aged_dat$SRF), ]
 
 # Add to exclusion table
 tab_exc <- rbind(
   tab_exc,
   data.frame(
-    "Exclusion" = "Missing fracture data",
-    "Number_excluded" = nb - nrow(dat),
-    "Number_remaining" = nrow(dat)
+    Exclusion = "Missing fracture data",
+    Number_excluded = nb - nrow(middle_aged_dat),
+    Number_remaining = nrow(middle_aged_dat)
   )
 )
 
-#  Exclude participants whose did not answer the self-reported activity question based on missing answer in IPAQ group
+# ---- Missing PA (IPAQ) data ----
+nb <- nrow(middle_aged_dat)
 
-# Store number before exclusion
-nb <- nrow(dat)
+middle_aged_dat <- middle_aged_dat[
+  !is.na(middle_aged_dat$cc_MET_mod) &
+    !is.na(middle_aged_dat$cc_MET_vig) &
+    !is.na(middle_aged_dat$cc_MET_walk),
+]
 
-# Store number before exclusion
-nb <- nrow(dat)
-
-# Exclude rows with NA in PA data
-dat <- dat[!is.na(dat$cc_MET_mod)
-           & !is.na(dat$cc_MET_vig)
-           &!is.na(dat$cc_MET_walk), ]
-
-# Add to exclusion table
 tab_exc <- rbind(
   tab_exc,
   data.frame(
-    "Exclusion" = "Missing MET data",
-    "Number_excluded" = nb - nrow(dat),
-    "Number_remaining" = nrow(dat)
+    Exclusion = "Missing MET data",
+    Number_excluded = nb - nrow(middle_aged_dat),
+    Number_remaining = nrow(middle_aged_dat)
   )
 )
 
+# ---- Missing ethnicity ----
+nb <- nrow(middle_aged_dat)
 
+middle_aged_dat <- middle_aged_dat[!is.na(middle_aged_dat$ethnicity), ]
 
-# Exclude those with missing covariate data
-nb <- nrow(dat)
-
-# Exclude rows with NA in Ethnicity
-dat <- dat[!is.na(dat$ethnicity), ]
-
-# Add to exclusion table
 tab_exc <- rbind(
   tab_exc,
   data.frame(
-    "Exclusion" = "Missing Ethnicity data",
-    "Number_excluded" = nb - nrow(dat),
-    "Number_remaining" = nrow(dat)
+    Exclusion = "Missing Ethnicity data",
+    Number_excluded = nb - nrow(middle_aged_dat),
+    Number_remaining = nrow(middle_aged_dat)
   )
 )
 
-# Exclude those with no deprivation data
+# ---- Missing deprivation ----
+nb <- nrow(middle_aged_dat)
 
-nb <- nrow(dat)
+middle_aged_dat <- middle_aged_dat[!is.na(middle_aged_dat$tdi), ]
 
-# Exclude rows with NA in tdi
-dat <- dat[!is.na(dat$tdi), ]
-
-# Add to exclusion table
 tab_exc <- rbind(
   tab_exc,
   data.frame(
-    "Exclusion" = "Missing deprivation data",
-    "Number_excluded" = nb - nrow(dat),
-    "Number_remaining" = nrow(dat)
+    Exclusion = "Missing deprivation data",
+    Number_excluded = nb - nrow(middle_aged_dat),
+    Number_remaining = nrow(middle_aged_dat)
   )
 )
 
-# Exclude those with missing education data
-nb <- nrow(dat)
+# ---- Missing education ----
+nb <- nrow(middle_aged_dat)
 
-# Exclude rows with NA in qualification
-dat <- dat[!is.na(dat$qualification), ]
+middle_aged_dat <- middle_aged_dat[!is.na(middle_aged_dat$qualification), ]
 
-# Add to exclusion table
 tab_exc <- rbind(
   tab_exc,
   data.frame(
-    "Exclusion" = "Missing qualification data",
-    "Number_excluded" = nb - nrow(dat),
-    "Number_remaining" = nrow(dat)
+    Exclusion = "Missing qualification data",
+    Number_excluded = nb - nrow(middle_aged_dat),
+    Number_remaining = nrow(middle_aged_dat)
   )
 )
 
-# Exclude those with missing anthropometric data
-nb <- nrow(dat)
+# ---- Missing anthropometrics ----
+nb <- nrow(middle_aged_dat)
 
-# Exclude rows with NA in weight
-dat <- dat[!is.na(dat$weight)
-           & !is.na(dat$height)
-           & !is.na(dat$WC)
-           & !is.na(dat$BMI), ]
+middle_aged_dat <- middle_aged_dat[
+  !is.na(middle_aged_dat$weight) &
+    !is.na(middle_aged_dat$height) &
+    !is.na(middle_aged_dat$WC) &
+    !is.na(middle_aged_dat$BMI),
+]
 
-
-# Add to exclusion table
 tab_exc <- rbind(
   tab_exc,
   data.frame(
-    "Exclusion" = "Missing anthropometric data",
-    "Number_excluded" = nb - nrow(dat),
-    "Number_remaining" = nrow(dat)
+    Exclusion = "Missing anthropometric data",
+    Number_excluded = nb - nrow(middle_aged_dat),
+    Number_remaining = nrow(middle_aged_dat)
   )
 )
 
-View (tab_exc)
+View(tab_exc)
 
-
-
+# Build the PNG file in FIGURES_DIR
 png(
-  filename = file.path(Figure_folder_path, "Exclusion_table.png"),
+  filename = file.path(FIGURES_DIR, "Figure_1_Exclusion_flow.png"),
   width = 1200,
   height = 800,
   res = 150
 )
 
+# Render the table as a figure
+gridExtra::grid.table(tab_exc)
 
-
+# Close the device
+dev.off()
 
 complete_case_dat <- dat
 

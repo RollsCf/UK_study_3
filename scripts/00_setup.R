@@ -13,9 +13,12 @@ packages <- c(
   "stringr",
   "purrr",
   "e1071",
-  "table1"
+  "gridExtra",
+  "officer"
+ 
 )
 
+## nb table1 not loaded here as dependent on gdtools and crashes the script
 
 
 # Install missing packages if needed
@@ -32,4 +35,42 @@ dotenv::load_dot_env(here::here("config.env"))
 DATA_RAW     <- Sys.getenv("DATA_RAW")
 DATA_DERIVED <- Sys.getenv("DATA_DERIVED")
 
+# Results directories
+RESULTS_DIR <- Sys.getenv("RESULTS_DIR")
 
+if (RESULTS_DIR == "") {
+  stop("RESULTS_DIR environment variable not set")
+}
+
+TABLES_DIR  <- file.path(RESULTS_DIR, "tables")
+FIGURES_DIR <- file.path(RESULTS_DIR, "figures")
+
+dir.create(TABLES_DIR,  recursive = TRUE, showWarnings = FALSE)
+dir.create(FIGURES_DIR, recursive = TRUE, showWarnings = FALSE)
+
+
+# =========================
+# Word table helper
+# =========================
+save_table_word <- function(df, table_number, title = NULL, folder_path = TABLES_DIR) {
+  if (!dir.exists(folder_path)) dir.create(folder_path, recursive = TRUE)
+  
+  file_path <- file.path(folder_path, paste0("Table_", table_number, ".docx"))
+  
+  doc <- officer::read_docx()
+  
+  if (!is.null(title)) {
+    doc <- doc %>%
+      officer::body_add_par(
+        paste0("Table ", table_number, ": ", title),
+        style = "Normal"
+      ) %>%
+      officer::body_add_par("", style = "Normal")
+  }
+  
+  doc <- doc %>% officer::body_add_table(df, style = "table_template")
+  print(doc, target = file_path)
+  
+  message("Saved: ", file_path)
+  invisible(file_path)
+}
