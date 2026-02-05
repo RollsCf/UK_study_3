@@ -6,16 +6,18 @@ output: html_document
 ---
 
 ```{r setup, include=FALSE}
+library(here)
+source(here("scripts/00_setup.R"))
+
 knitr::opts_chunk$set(echo = FALSE)
+knitr::opts_knit$set(root.dir = here())
+
+
+
+here()
+list.files(here())
+
 ```
-
-
-```{r set-up, include=FALSE}
-
-source(here::here("scripts/00_setup.R"))
-```
-
-
 
 Load dataset: This has already had exclusions applied to it, it is a complete case dataset
 
@@ -27,7 +29,7 @@ cc_dat  <- readRDS(file.path(DATA_DERIVED, "complete_case_dat.Rds"))
 Data set of complete case participants for analysis
 ```{r}
 # Select variables for cross sectional analysis
-dat <- dat %>%
+cc_dat <- cc_dat %>%
   select (
     eid,
     age_education,
@@ -78,20 +80,29 @@ dat <- dat %>%
 
 Create Table 1 (Demographics)
 ```{r}
+library(table1)
+
 # Create table1 object
-Table_3.0 <- table1(
+table1 <- table1(
   ~ age_A0 + ethnicity + tdi + qualification + weight + height + WC + BMI + SRF + Wrist + Hip + IPAQ | sex, 
-  data = dat,
+  data = cc_dat,
   overall = "Total"
 )
 
-# Convert table1 to flextable
-ft <- flextable::flextable(as.data.frame(Table_3.0))
 
-# Save to Word
-doc <- read_docx()
-doc <- body_add_flextable(doc, ft)
-print(doc, target = file.path(Table_folder_path, "Table 3.0.docx"))
+# Build the PNG file in FIGURES_DIR
+png(
+  filename = file.path(FIGURES_DIR, "Figure_2_Table1.png"),
+  width = 1200,
+  height = 800,
+  res = 150
+)
+
+# Render the table as a figure
+gridExtra::grid.table(table1)
+
+# Close the device
+dev.off()
 
 
 ```
@@ -103,7 +114,7 @@ print(doc, target = file.path(Table_folder_path, "Table 3.0.docx"))
 Age has already been limited to age 35-65 
 
 ```{r}
-ggplot(dat, aes(x = age_A0)) +
+ggplot(cc_dat, aes(x = age_A0)) +
   geom_bar(fill = "lightblue", color = "black") +
   labs(
     title = "Spread of Age in middle aged cohort at baseline",
@@ -115,16 +126,16 @@ ggplot(dat, aes(x = age_A0)) +
 
 ##### *Sex*
 
-```{r sex bar, echo=FALSE}
-ggplot(dat, aes(x = sex)) +
+```{r}
+ggplot(cc_dat, aes(x = sex)) +
   geom_bar(fill = "lightblue", color = "black") +
   labs(
     title = "Split of sex in UK Biobank middle aged cohort at baseline",
     x = "Sex",
     y = "Count"
   ) +
-  theme_minimal()+
-  scale_y_continuous(labels = comma)
+  theme_minimal()
+ 
 ```
 
 ##### *Ethnicity*
@@ -136,24 +147,21 @@ Ethnicity was recoded to show the following groupings
  - 3 = Black and Black British,
 -  4 = Mixed
 
-```{r ethnicity bar, echo=FALSE}
-ggplot(dat, aes(x = ethnicity)) +
+```{r }
+ggplot(cc_dat, aes(x = ethnicity)) +
   geom_bar(fill = "lightblue", color = "black") +
   labs(
     title = "Spread of ethnicity in UK Biobank middle aged cohort at baseline",
     x = "Ethnicity",
     y = "Count"
   ) +
-  theme_minimal() +
-  scale_y_continuous(labels = comma)
+  theme_minimal() 
 ```
 
 
 ### Exposure variables (PA)
 
-Participants were asked about activities undertaken in the last 4 weeks including frequency, intensity and duration. These are reported as raw values. From these a number of derived Metabolic Equivalent Task (MET) minutes of activity were also derived. 
-
-We have added a derived value of mins/wk spent in each activity for use in comparing to the accelerometry data later.
+Participants were asked about activities undertaken in the last 4 weeks including frequency, intensity and duration. These are reported as raw values. From these a number of  Metabolic Equivalent Task (MET) minutes of activity were also derived. 
 
 Activity measures (split into moderate, vigorous, walking and summed activity)
 
@@ -177,328 +185,6 @@ We are using only participants with all of duration and number of days/wk of act
 
 The full IPAQ calculates total physical activity as a combination of both leisure time PA (LTPA) as well as domains of work and normal activity - as such the resulting median MET-minutes is higher than for participation in LTPA alone. The general public health recommendations of 30 mins of MVPA are relatively low with most adults being able to achieve this regardless of leisure time activity. To look at the health benefits of LTPA higher cut point thresholds are needed for UKB IPAQ data.
 
-
-#### Moderate activity
-
-```{r}
-ggplot(dat[!is.na(dat$mins_wk_mod), ], aes(x = mins_wk_mod)) +
-  geom_histogram(binwidth = 5, fill = "skyblue", color = "black") +
-  labs(title = "Histogram of minutes/week of moderate activity",
-       x = "Duration (minutes/wk)",
-       y = "Count") +
-  theme_minimal()
-```
-
-```{r}
-
-hist(dat$MET_mod, 
-     main = "Histogram of MET mins/week moderate activity", 
-     xlab = "MET mins/week of moderate activity", 
-     ylab = "Frequency", 
-     col = "lightblue", 
-     border = "black")
-```
-     
-
-```{r}
-vars <- c( "mins_wk_mod", "MET_mod")
-
-PA_summary_sex <- dat %>%
-  group_by(sex) %>%
-  summarise(
-    across(
-      all_of(vars),
-      list(
-        N        = ~ sum(!is.na(.)),
-        Mean     = ~ round(mean(., na.rm = TRUE),2),
-        SD       = ~ round(sd(., na.rm = TRUE),2),
-        Median   = ~ round(median(., na.rm = TRUE),2),
-        Min      = ~ min(., na.rm = TRUE),
-        Max      = ~ max(., na.rm = TRUE),
-        IQR_low  = ~ quantile(., 0.25, na.rm = TRUE),
-        IQR_high = ~ quantile(., 0.75, na.rm = TRUE)
-      ),
-      .names = "{.col}_{.fn}"
-    )
-  ) 
-PA_summary_total <- dat %>%
-  summarise(
-    across(
-      all_of(vars),
-      list(
-        N        = ~ sum(!is.na(.)),
-        Mean     = ~ round(mean(., na.rm = TRUE),2),
-        SD       = ~ round(sd(., na.rm = TRUE),2),
-        Median   = ~ round(median(., na.rm = TRUE),2),
-        Min      = ~ min(., na.rm = TRUE),
-        Max      = ~ max(., na.rm = TRUE),
-        IQR_low  = ~ quantile(., 0.25, na.rm = TRUE),
-        IQR_high = ~ quantile(., 0.75, na.rm = TRUE)
-      ),
-      .names = "{.col}_{.fn}"
-    )
-  ) %>%
-  mutate(sex = "Total") %>%
-  select(sex, everything())  # make sex the first column for consistency
-
-PA_summary <- bind_rows(PA_summary_sex, PA_summary_total) %>%
-  pivot_longer(
-    -sex,
-    names_to = c("Variable", ".value"),
-    names_pattern = "^(.*)_(N|Mean|SD|Median|Min|Max|IQR_low|IQR_high)$"
-  )
-
-
-Table_3.1 <-make_table(
-  PA_summary,
-  table_number = "3.1",
-  folder_path = Table_folder_path,
-  title = "Summary statistics on moderate activity at baseline"
-)
-
-Table_3.1
-```
-
-#### Vigorous activity
-```{r}
-ggplot(dat[!is.na(dat$mins_wk_vig), ], aes(x = mins_wk_vig)) +
-  geom_histogram(binwidth = 5, fill = "skyblue", color = "black") +
-  labs(title = "Histogram of minutes/week of vigorous activity",
-       x = "Duration  (minutes/wk)",
-       y = "Count") +
-  theme_minimal()
-```
-
-```{r}
-hist(dat$MET_mod, 
-     main = "Histogram of MET mins/week vigorous activity", 
-     xlab = "MET mins/week of vigorous activity", 
-     ylab = "Frequency", 
-     col = "lightblue", 
-     border = "black")
-```
-
-```{r}
-vars <- c( "mins_wk_vig", "MET_vig")
-
-PA_summary_sex <- dat %>%
-  group_by(sex) %>%
-  summarise(
-    across(
-      all_of(vars),
-      list(
-        N        = ~ sum(!is.na(.)),
-        Mean     = ~ round(mean(., na.rm = TRUE),2),
-        SD       = ~ round(sd(., na.rm = TRUE),2),
-        Median   = ~ round(median(., na.rm = TRUE),2),
-        Min      = ~ min(., na.rm = TRUE),
-        Max      = ~ max(., na.rm = TRUE),
-        IQR_low  = ~ quantile(., 0.25, na.rm = TRUE),
-        IQR_high = ~ quantile(., 0.75, na.rm = TRUE)
-      ),
-      .names = "{.col}_{.fn}"
-    )
-  ) 
-PA_summary_total <- dat %>%
-  summarise(
-    across(
-      all_of(vars),
-      list(
-        N        = ~ sum(!is.na(.)),
-        Mean     = ~ round(mean(., na.rm = TRUE),2),
-        SD       = ~ round(sd(., na.rm = TRUE),2),
-        Median   = ~ round(median(., na.rm = TRUE),2),
-        Min      = ~ min(., na.rm = TRUE),
-        Max      = ~ max(., na.rm = TRUE),
-        IQR_low  = ~ quantile(., 0.25, na.rm = TRUE),
-        IQR_high = ~ quantile(., 0.75, na.rm = TRUE)
-      ),
-      .names = "{.col}_{.fn}"
-    )
-  ) %>%
-  mutate(sex = "Total") %>%
-  select(sex, everything())  # make sex the first column for consistency
-
-PA_summary <- bind_rows(PA_summary_sex, PA_summary_total) %>%
-  pivot_longer(
-    -sex,
-    names_to = c("Variable", ".value"),
-    names_pattern = "^(.*)_(N|Mean|SD|Median|Min|Max|IQR_low|IQR_high)$"
-  )
-
-
-Table_3.2 <-make_table(
-  PA_summary,
-  table_number = "3.2",
-  folder_path = Table_folder_path,
-  title = "Summary statistics on vigorous activity at baseline"
-)
-
-Table_3.2
-```
-
-#### Walking behaviour
-
-```{r}
-ggplot(dat[!is.na(dat$mins_wk_walk), ], aes(x = mins_wk_walk)) +
-  geom_histogram(binwidth = 5, fill = "skyblue", color = "black") +
-  labs(title = "Histogram of mins/week walking",
-       x = "Duration Walk (minutes/wk)",
-       y = "Count") +
-  theme_minimal()
-```
-
-```{r}
-hist(dat$MET_walk, 
-     main = "Histogram of MET mins/week walking activity", 
-     xlab = "MET mins/week of wallking activity", 
-     ylab = "Frequency", 
-     col = "lightblue", 
-     border = "black")
-```
-
-```{r}
-vars <- c("mins_wk_walk", "MET_walk")
-
-PA_summary_sex <- dat %>%
-  group_by(sex) %>%
-  summarise(
-    across(
-      all_of(vars),
-      list(
-        N        = ~ sum(!is.na(.)),
-        Mean     = ~ round(mean(., na.rm = TRUE),2),
-        SD       = ~ round(sd(., na.rm = TRUE),2),
-        Median   = ~ round(median(., na.rm = TRUE),2),
-        Min      = ~ min(., na.rm = TRUE),
-        Max      = ~ max(., na.rm = TRUE),
-        IQR_low  = ~ quantile(., 0.25, na.rm = TRUE),
-        IQR_high = ~ quantile(., 0.75, na.rm = TRUE)
-      ),
-      .names = "{.col}_{.fn}"
-    )
-  ) 
-PA_summary_total <- dat %>%
-  summarise(
-    across(
-      all_of(vars),
-      list(
-        N        = ~ sum(!is.na(.)),
-        Mean     = ~ round(mean(., na.rm = TRUE),2),
-        SD       = ~ round(sd(., na.rm = TRUE),2),
-        Median   = ~ round(median(., na.rm = TRUE),2),
-        Min      = ~ min(., na.rm = TRUE),
-        Max      = ~ max(., na.rm = TRUE),
-        IQR_low  = ~ quantile(., 0.25, na.rm = TRUE),
-        IQR_high = ~ quantile(., 0.75, na.rm = TRUE)
-      ),
-      .names = "{.col}_{.fn}"
-    )
-  ) %>%
-  mutate(sex = "Total") %>%
-  select(sex, everything())  # make sex the first column for consistency
-
-PA_summary <- bind_rows(PA_summary_sex, PA_summary_total) %>%
-  pivot_longer(
-    -sex,
-    names_to = c("Variable", ".value"),
-    names_pattern = "^(.*)_(N|Mean|SD|Median|Min|Max|IQR_low|IQR_high)$"
-  )
-
-
-Table_3.3 <-make_table(
-  PA_summary,
-  table_number = "3.3",
-  folder_path = Table_folder_path,
-  title = "Summary statistics on walking activity at baseline"
-)
-
-Table_3.3
-```
-
-#### Combined activity
-
-- MVPA
-This variable has been derived along with mins/wk in MVPA in order to compare to other published data and the accelerometry data
-
-```{r}
-ggplot(dat[!is.na(dat$mins_wk_MVPA), ], aes(x = mins_wk_MVPA)) +
-  geom_histogram(binwidth = 5, fill = "skyblue", color = "black") +
-  labs(title = "Histogram of Minutes/week Moderate and vigorous activity",
-       x = "Duration Walk (minutes/wk)",
-       y = "Count") +
-  theme_minimal()
-```
-
-```{r}
-hist(dat$MET_MVPA, 
-     main = "Histogram of MET mins/week Moderate and vigorous (MVPA) activity", 
-     xlab = "MET mins/week of MVPA", 
-     ylab = "Frequency", 
-     col = "lightblue", 
-     border = "black")
-```
-
-```{r}
-
-vars <- c( "mins_wk_MVPA", "MET_MVPA")
-
-PA_summary_sex <- dat %>%
-  group_by(sex) %>%
-  summarise(
-    across(
-      all_of(vars),
-      list(
-        N        = ~ sum(!is.na(.)),
-        Mean     = ~ round(mean(., na.rm = TRUE),2),
-        SD       = ~ round(sd(., na.rm = TRUE),2),
-        Median   = ~ round(median(., na.rm = TRUE),2),
-        Min      = ~ min(., na.rm = TRUE),
-        Max      = ~ max(., na.rm = TRUE),
-        IQR_low  = ~ quantile(., 0.25, na.rm = TRUE),
-        IQR_high = ~ quantile(., 0.75, na.rm = TRUE)
-      ),
-      .names = "{.col}_{.fn}"
-    )
-  ) 
-PA_summary_total <- dat %>%
-  summarise(
-    across(
-      all_of(vars),
-      list(
-        N        = ~ sum(!is.na(.)),
-        Mean     = ~ round(mean(., na.rm = TRUE),2),
-        SD       = ~ round(sd(., na.rm = TRUE),2),
-        Median   = ~ round(median(., na.rm = TRUE),2),
-        Min      = ~ min(., na.rm = TRUE),
-        Max      = ~ max(., na.rm = TRUE),
-        IQR_low  = ~ quantile(., 0.25, na.rm = TRUE),
-        IQR_high = ~ quantile(., 0.75, na.rm = TRUE)
-      ),
-      .names = "{.col}_{.fn}"
-    )
-  ) %>%
-  mutate(sex = "Total") %>%
-  select(sex, everything())  # make sex the first column for consistency
-
-PA_summary <- bind_rows(PA_summary_sex, PA_summary_total) %>%
-  pivot_longer(
-    -sex,
-    names_to = c("Variable", ".value"),
-    names_pattern = "^(.*)_(N|Mean|SD|Median|Min|Max|IQR_low|IQR_high)$"
-  )
-
-
-Table_3.4 <-make_table(
-  PA_summary,
-  table_number = "3.4",
-  folder_path = Table_folder_path,
-  title = "Summary statistics on MVPA baseline"
-)
-
-Table_3.4
-```
-
 #### Summed days activity per week 
 
 Sum of days performing walking, moderate and vigorous activity - question derived from answers to number of days doing each of the following in a week so total of all will add up to more than 7 but cant be over 21.
@@ -508,10 +194,52 @@ Sum of days performing walking, moderate and vigorous activity - question derive
 As with the above this is the total amount of time in minutes spent walking, doing vigorous and doing moderate PA. Unlike summed days this should not exceed the total number of minutes in a week
 
 
-```{r}
-vars <- c(  "summed_MET_all")
 
-PA_summary_sex <- dat %>%
+```{r}
+hist(cc_dat$MET_mod, 
+     main = "Histogram of MET mins/week vigorous activity", 
+     xlab = "MET mins/week of vigorous activity", 
+     ylab = "Frequency", 
+     col = "lightblue", 
+     border = "black")
+```
+
+```{r}
+hist(cc_dat$MET_MVPA, 
+     main = "Histogram of MET mins/week Moderate and vigorous (MVPA) activity", 
+     xlab = "MET mins/week of MVPA", 
+     ylab = "Frequency", 
+     col = "lightblue", 
+     border = "black")
+```
+
+```{r}
+
+hist(cc_dat$MET_walk, 
+     main = "Histogram of MET mins/week of walking", 
+     xlab = "MET mins/week of all activity", 
+     ylab = "Frequency", 
+     col = "lightblue", 
+     border = "black")
+
+```
+
+```{r}
+
+hist(cc_dat$summed_MET_all, 
+     main = "Histogram of summed MET mins/week for all activity", 
+     xlab = "MET mins/week of all activity", 
+     ylab = "Frequency", 
+     col = "lightblue", 
+     border = "black")
+
+```
+
+
+```{r}
+vars <- c("MET_mod", "MET_vig", "MET_MVPA","MET_walk", "summed_MET_all")
+
+PA_summary_sex <- cc_dat %>%
   group_by(sex) %>%
   summarise(
     across(
@@ -529,7 +257,7 @@ PA_summary_sex <- dat %>%
       .names = "{.col}_{.fn}"
     )
   ) 
-PA_summary_total <- dat %>%
+PA_summary_total <- cc_dat %>%
   summarise(
     across(
       all_of(vars),
@@ -556,43 +284,22 @@ PA_summary <- bind_rows(PA_summary_sex, PA_summary_total) %>%
     names_pattern = "^(.*)_(N|Mean|SD|Median|Min|Max|IQR_low|IQR_high)$"
   )
 
-
-Table_3.3 <-make_table(
-  PA_summary,
-  table_number = "3.3",
-  folder_path = Table_folder_path,
-  title = "Summary statistics on all activity at baseline"
+save_table_word(
+  df = PA_summary,  # your data frame
+  table_number = "Table 3.1",  # can be numeric or string
+  folder_path = TABLES_DIR,       # uses setup-defined folder
+  title = "Summary statistics on Met mins/wk of activity at baseline"
 )
 
-Table_3.3
-```
-
-
-```{r MET histo, echo=FALSE}
-
-hist(dat$mins_wk_summed, 
-     main = "Histogram of summed mins/week for all activity", 
-     xlab = "MET mins/week of all activity", 
-     ylab = "Frequency", 
-     col = "lightblue", 
-     border = "black")
-
-hist(dat$summed_MET_all, 
-     main = "Histogram of summed MET mins/week for all activity", 
-     xlab = "MET mins/week of all activity", 
-     ylab = "Frequency", 
-     col = "lightblue", 
-     border = "black")
 
 ```
-
 
 #### International Physical Activity Questionnaire (IPAQ) 
 Based on activity frequency, duration and intensity an activity group is derived as being low, moderate or high active.
 
 
-```{r IPAQ group bar chart, echo=FALSE}
-ggplot(dat, aes(x = IPAQ)) +
+```{r }
+ggplot(cc_dat, aes(x = IPAQ)) +
   geom_bar(fill = "lightblue", color = "black") +
   labs(
     title = "Derived IPAQ activity group",
@@ -607,15 +314,15 @@ ggplot(dat, aes(x = IPAQ)) +
 ### Physical activity status by outcome
 
 ```{r}
-PA_vars <- c("MET_mod", "MET_vig", "MET_MVPA", "MET_walk")
+PA_vars <- c("MET_mod", "MET_vig", "MET_MVPA", "summed_MET_all")
 
-dat <- dat %>%
+cc_dat <- cc_dat %>%
   mutate(
     Fracture = factor(SRF, levels = c(0, 1), labels = c("No fracture", "Fracture"))
   )
 
 # Summarise by fracture
-PA_summary_fracture <- dat %>%
+PA_summary_fracture <- cc_dat %>%
   group_by(SRF) %>%
   summarise(
     across(
@@ -635,7 +342,7 @@ PA_summary_fracture <- dat %>%
   )
 
 # Summarise total (all participants)
-PA_summary_total <- dat %>%
+PA_summary_total <- cc_dat %>%
   summarise(
     across(
       all_of(PA_vars),
@@ -664,149 +371,11 @@ PA_summary <- bind_rows(PA_summary_fracture, PA_summary_total) %>%
   rename(`Fracture status` = SRF)
 
 
-Table_3.5 <- make_table(
-  PA_summary,
-  table_number = "3.5",
-  folder_path = Table_folder_path,
-  title = "Summary statistics on PA variables at baseline by fracture status"
-)
-
-Table_3.5
-
-```
-### Visual comparison (box plots)
-
-#### Moderate PA
-
-```{r}
-
-boxplot(dat$MET_mod ~ dat$SRF)
-
-# Calculate 1st and 99th percentiles
-lims <- quantile(dat$MET_mod, probs = c(0.01, 0.99), na.rm = TRUE)
-
-# Create trimmed dataset
-dat_99 <- dat %>%
-  filter(
-    MET_mod >= lims[1],
-    MET_mod <= lims[2]
-  )
-
-# Boxplot
-boxplot(
-  MET_mod ~ SRF,
-  data = dat_99,
-  ylab = "Moderate PA (MET-min/week)",
-  xlab = "Fracture",
-  main = "Moderate physical activity by Fracture (1st–99th percentile)"
-)
-
-### With inactivity ie MET = 0 removed
-
-dat_nonzero_99 <- dat %>%
-  filter(MET_mod > 0)
-
-lims <- quantile(dat_nonzero_99$MET_mod, c(0.01, 0.99), na.rm = TRUE)
-
-dat_nonzero_99 <- dat_nonzero_99 %>%
-  filter(MET_mod >= lims[1], MET_mod <= lims[2])
-
-boxplot(
-  MET_mod ~ SRF,
-  data = dat_nonzero_99,
-  ylab = "Moderate PA (MET-min/week)",
-  xlab = "Fracture",
-  main = "Moderate PA (non-zero, 1st–99th percentile)"
-)
-
-
-```
-
-#### Vigorous PA
-
-```{r}
-
-boxplot(dat$MET_vig ~ dat$SRF)
-
-# Calculate 1st and 99th percentiles
-lims <- quantile(dat$MET_vig, probs = c(0.01, 0.99), na.rm = TRUE)
-
-# Create trimmed dataset
-dat_99 <- dat %>%
-  filter(
-    MET_vig >= lims[1],
-    MET_vig <= lims[2]
-  )
-
-# Boxplot
-boxplot(
-  MET_vig ~ SRF,
-  data = dat_99,
-  ylab = "Vigorous PA (MET-min/week)",
-  xlab = "Fracture",
-  main = "Vigorous physical activity by Fracture (1st–99th percentile)"
-)
-
-### With inactivity ie MET = 0 removed
-
-dat_nonzero_99 <- dat %>%
-  filter(MET_vig > 0)
-
-lims <- quantile(dat_nonzero_99$MET_vig, c(0.01, 0.99), na.rm = TRUE)
-
-dat_nonzero_99 <- dat_nonzero_99 %>%
-  filter(MET_vig >= lims[1], MET_vig <= lims[2])
-
-boxplot(
-  MET_vig ~ SRF,
-  data = dat_nonzero_99,
-  ylab = "Vigorous PA (MET-min/week)",
-  xlab = "Fracture",
-  main = "Vigorous PA (non-zero, 1st–99th percentile)"
-)
-
-```
-#### MVPA
-
-```{r}
-
-boxplot(dat$MET_MVPA ~ dat$SRF)
-
-# Calculate 1st and 99th percentiles
-lims <- quantile(dat$MET_MVPA, probs = c(0.01, 0.99), na.rm = TRUE)
-
-# Create trimmed dataset
-dat_99 <- dat %>%
-  filter(
-    MET_MVPA >= lims[1],
-    MET_MVPA <= lims[2]
-  )
-
-# Boxplot
-boxplot(
-  MET_MVPA ~ SRF,
-  data = dat_99,
-  ylab = "MVPA (MET-min/week)",
-  xlab = "Fracture",
-  main = "MVPA physical activity by self-rated health (1st–99th percentile)"
-)
-
-### With inactivity ie MET = 0 removed
-
-dat_nonzero_99 <- dat %>%
-  filter(MET_MVPA > 0)
-
-lims <- quantile(dat_nonzero_99$MET_MVPA, c(0.01, 0.99), na.rm = TRUE)
-
-dat_nonzero_99 <- dat_nonzero_99 %>%
-  filter(MET_MVPA >= lims[1], MET_MVPA <= lims[2])
-
-boxplot(
-  MET_MVPA ~ SRF,
-  data = dat_nonzero_99,
-  ylab = "Moderate PA (MET-min/week)",
-  xlab = "Fracture",
-  main = "MVPA PA (non-zero, 1st–99th percentile)"
+save_table_word(
+  df = PA_summary,  # your data frame
+  table_number = "Table 3.2",  # can be numeric or string
+  folder_path = TABLES_DIR,       # uses setup-defined folder
+  title = "Summary statistics on Met mins/wk of activity at baseline by fracture status"
 )
 
 ```
@@ -814,84 +383,117 @@ boxplot(
 ### Relationship between moderate and vigorous PA
 
 ```{r}
-ggplot(dat, aes(MET_mod, MET_vig)) + geom_point()
+ggplot(cc_dat, aes(MET_mod, MET_vig)) + geom_point()
 ```
 
 
 ### Log transformations to correct for extreme skew ###
 
-All data is skewed, look at whether log transformation helps normalise the data
+All activity data is skewed, look at whether log transformation helps normalise the data
 
 ```{r}
-dat <- dat %>%
-  mutate(log_MET_mod = log(MET_mod + 1))
+# Function to log transform variables and plot
 
-ggplot(dat, aes(x = log_MET_mod)) +
-  geom_histogram(bins = 50) +
-  theme_minimal()
+log_transform_plot <- function(data, vars, add_one = TRUE, bins = 50) {
+  transformed_data <- data
+  
+  plots <- list()
+  
+  for (var in vars) {
+    # New variable name
+    log_var <- paste0("log_", var)
+    
+    # Log transform
+    if (add_one) {
+      transformed_data <- transformed_data %>%
+        mutate(!!log_var := log(!!rlang::sym(var) + 1))
+    } else {
+      transformed_data <- transformed_data %>%
+        mutate(!!log_var := log(!!rlang::sym(var)))
+    }
+    
+    # Create histogram plot
+    p <- ggplot(transformed_data, aes(x = !!rlang::sym(log_var))) +
+      geom_histogram(bins = bins, fill = "steelblue", color = "white") +
+      theme_minimal() +
+      labs(
+        x = log_var,
+        y = "Count",
+        title = paste("Histogram of", log_var)
+      )
+    
+    plots[[log_var]] <- p
+  }
+  
+  return(list(
+    data = transformed_data,
+    plots = plots
+  ))
+}
+
 ```
+
 ```{r}
 
-# 99th percentile and log transformed
-# 1. Calculate 99th percentile on raw MET_mod
-p99 <- quantile(dat$MET_mod, 0.99, na.rm = TRUE)
+result <- log_transform_plot(cc_dat, vars = c("MET_mod", "MET_vig", "MET_MVPA", "MET_walk", "summed_MET_all"))
 
-# 2. Filter out extreme values
-dat <- dat %>%
-  filter(MET_mod <= p99)
+# Access the transformed data
+cc_dat_transformed <- result$data
 
-# 3. Log transform
-dat <- dat %>%
-  mutate(log_MET_mod = log(MET_mod + 1))
+# Display the plots
+result$plots$log_MET_mod
+result$plots$log_MET_vig
+result$plots$log_MET_MVPA
+result$plots$log_MET_walk
+result$plots$log_summed_MET_all
 
-ggplot(dat, aes(x = log_MET_mod)) +
-  geom_histogram(bins = 50) +
-  theme_minimal()
 ```
 
 #### examine for variation at extremes of activity
 
-```{r}
-dat <- dat %>%
-  mutate(
-    MET_mod_bin = cut(MET_mod,
-                      breaks = c(-Inf, 150, 300, 450, Inf),
-                      labels = c("0–150 min", "151–300 min", "301–450 min", ">450 min"),
-                      right = TRUE)
-  )
-dat %>%
-  group_by(MET_mod_bin) %>%
-  summarise(
-    N = n(),
-    Fractures = sum(SRF == "Yes", na.rm = TRUE),
-    `Fracture %` = round(100 * mean(SRF == "Yes", na.rm = TRUE), 2)
-  )
-ggplot(dat, aes(x = MET_mod_bin, y = as.numeric(SRF == "Yes"))) +
-  geom_bar(stat = "summary", fun = "mean") +
-  ylab("Proportion with fracture") +
-  xlab("Moderate PA (minutes/week)") +
-  ggtitle("Fracture proportion by PA bins")
-```
 
 #### For all variables - need to consider the split of PA
 
 ````{r}
 
-# 1️⃣ Define PA variables and bin breaks
-PA_vars <- c("MET_mod", "MET_vig", "MET_walk", "MET_MVPA")
-bin_breaks <- c(-Inf, 150, 300, 450, Inf)  # example: 0-150, 151-300, 301-450, >450
-bin_labels <- c("0–150 min", "151–300 min", "301–450 min", ">450 min")
-
-# 2️⃣ Create bins for each PA variable
-for (var in PA_vars) {
-  bin_var <- paste0(var, "_bin")
-  dat[[bin_var]] <- cut(dat[[var]], breaks = bin_breaks, labels = bin_labels, right = TRUE)
+create_quintile_bins <- function(data, vars) {
+  binned_data <- data
+  
+  for (var in vars) {
+    bin_var <- paste0(var, "_q")  # _q for quintile
+    
+    # 1️⃣ Calculate breaks and make unique
+    breaks <- unique(quantile(binned_data[[var]], probs = seq(0, 1, 0.2), na.rm = TRUE))
+    
+    # 2️⃣ Only cut if there is more than one unique break
+    if (length(breaks) > 1) {
+      binned_data[[bin_var]] <- cut(
+        binned_data[[var]],
+        breaks = breaks,
+        include.lowest = TRUE,
+        labels = paste0("Q", seq_len(length(breaks) - 1))
+      )
+    } else {
+      # If all values are the same, put in single bin
+      binned_data[[bin_var]] <- factor("Q1", levels = "Q1")
+    }
+  }
+  
+  return(binned_data)
 }
 
-# 3️⃣ Summarize fracture counts and percentages per bin
-PA_bin_summary <- lapply(PA_vars, function(var) {
-  bin_var <- paste0(var, "_bin")
-  dat %>%
+PA_vars <- c("MET_mod", "MET_vig", "MET_walk", "MET_MVPA", "summed_MET_all")
+
+cc_dat <- create_quintile_bins(cc_dat, PA_vars)
+
+# Check new columns
+head(cc_dat[, c(PA_vars, paste0(PA_vars, "_q"))])
+
+
+
+PA_quintile_summary <- lapply(PA_vars, function(var) {
+  bin_var <- paste0(var, "_q")
+  cc_dat %>%
     group_by(.data[[bin_var]]) %>%
     summarise(
       N = n(),
@@ -901,29 +503,26 @@ PA_bin_summary <- lapply(PA_vars, function(var) {
     mutate(PA_variable = var) %>%
     rename(Bin = .data[[bin_var]])
 }) %>%
-  bind_rows()
-
-# 4️⃣ Create a table: wide or tidy
-PA_bin_summary_table <- PA_bin_summary %>%
+  bind_rows() %>%
   select(PA_variable, Bin, N, Fractures, `Fracture %`) %>%
   arrange(PA_variable, Bin)
 
-PA_bin_summary_table
+PA_quintile_summary
 
 for (var in PA_vars) {
-  bin_var <- paste0(var, "_bin")
+  bin_var <- paste0(var, "_q")
   
-  # Save the plot to a variable
-  p <- ggplot(dat, aes(x = .data[[bin_var]], y = as.numeric(SRF == "Yes"))) +
+  p <- ggplot(cc_dat, aes(x = .data[[bin_var]], y = as.numeric(SRF == "Yes"))) +
     geom_bar(stat = "summary", fun = "mean", fill = "steelblue", alpha = 0.7) +
     ylab("Proportion with fracture") +
-    xlab(paste0(var, " (minutes/week)")) +
-    ggtitle(paste0("Fracture proportion by ", var, " bins")) +
+    xlab(paste0(var, " (quintiles)")) +
+    ggtitle(paste0("Fracture proportion by ", var, " quintiles")) +
     theme_minimal() +
-    ylim(0, 1)  # better for proportions
+    ylim(0, 1)
   
-  print(p)  # print each plot inside the loop
+  print(p)
 }
+
 
 ````
 #### Extreme behaviour
@@ -931,26 +530,36 @@ for (var in PA_vars) {
 ```{r}
 PA_vars <- c("MET_mod", "MET_vig", "MET_walk", "MET_MVPA")
 
-# 1️⃣ Create extremes bins for each PA variable
 for (var in PA_vars) {
   extreme_var <- paste0(var, "_extreme")
   
-  dat[[extreme_var]] <- cut(
-    dat[[var]],
-    breaks = c(-Inf,
-               quantile(dat[[var]], 0.10, na.rm = TRUE),
-               quantile(dat[[var]], 0.90, na.rm = TRUE),
-               Inf),
-    labels = c("Bottom 10%", "Middle 80%", "Top 10%"),
-    right = TRUE
-  )
+  # 1️⃣ Compute 10th and 90th percentiles
+  p10 <- quantile(cc_dat[[var]], 0.10, na.rm = TRUE)
+  p90 <- quantile(cc_dat[[var]], 0.90, na.rm = TRUE)
+  
+  # 2️⃣ Make sure breaks are strictly increasing
+  breaks <- unique(c(-Inf, p10, p90, Inf))
+  
+  # 3️⃣ Only cut if we have enough unique breaks
+  if (length(breaks) == 4) {  # -Inf, p10, p90, Inf
+    cc_dat[[extreme_var]] <- cut(
+      cc_dat[[var]],
+      breaks = breaks,
+      labels = c("Bottom 10%", "Middle 80%", "Top 10%"),
+      right = TRUE
+    )
+  } else {
+    # Fallback: if too few unique values, put everything in Middle
+    cc_dat[[extreme_var]] <- factor("Middle 80%", levels = c("Bottom 10%", "Middle 80%", "Top 10%"))
+  }
 }
+
 
 # 2️⃣ Summarize fractures per extreme bin
 PA_extreme_summary <- lapply(PA_vars, function(var) {
   extreme_var <- paste0(var, "_extreme")
   
-  dat %>%
+  cc_dat %>%
     group_by(.data[[extreme_var]]) %>%
     summarise(
       N = n(),
@@ -968,7 +577,7 @@ PA_extreme_summary
 for (var in PA_vars) {
   extreme_var <- paste0(var, "_extreme")
   
-  p <- ggplot(dat, aes(x = .data[[extreme_var]], y = as.numeric(SRF == "Yes"))) +
+  p <- ggplot(cc_dat, aes(x = .data[[extreme_var]], y = as.numeric(SRF == "Yes"))) +
     geom_bar(stat = "summary", fun = "mean", fill = "steelblue", alpha = 0.7) +
     ylab("Proportion with fracture") +
     xlab(paste0(var, " (minutes/week)")) +
@@ -988,7 +597,7 @@ PA_vars <- c("MET_mod", "MET_vig", "MET_walk", "MET_MVPA")
 PA_extreme_summary_age <- lapply(PA_vars, function(var) {
   extreme_var <- paste0(var, "_extreme")
   
-  dat %>%
+  cc_dat %>%
     group_by(agegp_A0, .data[[extreme_var]]) %>%
     summarise(
       N = n(),
@@ -1006,7 +615,7 @@ PA_extreme_summary_age
 for (var in PA_vars) {
   extreme_var <- paste0(var, "_extreme")
   
-  p <- ggplot(dat, aes(x = .data[[extreme_var]], y = as.numeric(SRF == "Yes"))) +
+  p <- ggplot(cc_dat, aes(x = .data[[extreme_var]], y = as.numeric(SRF == "Yes"))) +
     geom_bar(stat = "summary", fun = "mean", fill = "steelblue", alpha = 0.7) +
     facet_wrap(~agegp_A0) +  # stratify by age group
     ylab("Proportion with fracture") +
@@ -1027,7 +636,7 @@ PA_vars <- c("MET_mod", "MET_vig", "MET_walk", "MET_MVPA")
 PA_extreme_summary_age_sex <- lapply(PA_vars, function(var) {
   extreme_var <- paste0(var, "_extreme")
   
-  dat %>%
+  cc_dat %>%
     group_by(agegp_A0, sex, .data[[extreme_var]]) %>%
     summarise(
       N = n(),
@@ -1045,7 +654,7 @@ PA_extreme_summary_age_sex
 for (var in PA_vars) {
   extreme_var <- paste0(var, "_extreme")
   
-  p <- ggplot(dat, aes(x = .data[[extreme_var]], y = as.numeric(SRF == "Yes"))) +
+  p <- ggplot(cc_dat, aes(x = .data[[extreme_var]], y = as.numeric(SRF == "Yes"))) +
     geom_bar(stat = "summary", fun = "mean", fill = "steelblue", alpha = 0.7) +
     facet_grid(agegp_A0 ~ sex) +  # stratify by age group (rows) and sex (columns)
     ylab("Proportion with fracture") +
@@ -1059,36 +668,107 @@ for (var in PA_vars) {
 ```
  
  
- 
- 
 
-
-#### Log transformed MET_vig and MET_walk and MET_MVPA
 
 ```{r}
-dat <- dat %>%
-  mutate(log_MET_vig = log(MET_vig + 1))
-
-ggplot(dat, aes(x = log_MET_vig)) +
-  geom_histogram(bins = 50) +
-  theme_minimal()
-
-dat <- dat %>%
-  mutate(log_MET_walk = log(MET_walk + 1))
-
-ggplot(dat, aes(x = log_MET_walk)) +
-  geom_histogram(bins = 50) +
-  theme_minimal()
-
-dat <- dat %>%
-  mutate(log_MET_MVPA = log(MET_MVPA + 1))
-
-ggplot(dat, aes(x = log_MET_MVPA)) +
-  geom_histogram(bins = 50) +
-  theme_minimal()
+# For use in TTE descriptive
+# 
+# ggplot(cc_dat[!is.na(cc_dat$mins_wk_mod), ], aes(x = mins_wk_mod)) +
+#   geom_histogram(binwidth = 5, fill = "skyblue", color = "black") +
+#   labs(title = "Histogram of minutes/week of moderate activity",
+#        x = "Duration (minutes/wk)",
+#        y = "Count") +
+#   theme_minimal()
 ```
 
 
+# ```{r}
+# ggplot(dat[!is.na(dat$mins_wk_vig), ], aes(x = mins_wk_vig)) +
+#   geom_histogram(binwidth = 5, fill = "skyblue", color = "black") +
+#   labs(title = "Histogram of minutes/week of vigorous activity",
+#        x = "Duration  (minutes/wk)",
+#        y = "Count") +
+#   theme_minimal()
+# ```
 
+
+
+
+# ```{r}
+# ggplot(dat[!is.na(dat$mins_wk_walk), ], aes(x = mins_wk_walk)) +
+#   geom_histogram(binwidth = 5, fill = "skyblue", color = "black") +
+#   labs(title = "Histogram of mins/week walking",
+#        x = "Duration Walk (minutes/wk)",
+#        y = "Count") +
+#   theme_minimal()
+# ```
+
+# ```{r}
+# hist(dat$MET_walk, 
+#      main = "Histogram of MET mins/week walking activity", 
+#      xlab = "MET mins/week of wallking activity", 
+#      ylab = "Frequency", 
+#      col = "lightblue", 
+#      border = "black")
+# ```
+
+# ```{r}
+# vars <- c("mins_wk_walk", "MET_walk")
+# 
+# PA_summary_sex <- dat %>%
+#   group_by(sex) %>%
+#   summarise(
+#     across(
+#       all_of(vars),
+#       list(
+#         N        = ~ sum(!is.na(.)),
+#         Mean     = ~ round(mean(., na.rm = TRUE),2),
+#         SD       = ~ round(sd(., na.rm = TRUE),2),
+#         Median   = ~ round(median(., na.rm = TRUE),2),
+#         Min      = ~ min(., na.rm = TRUE),
+#         Max      = ~ max(., na.rm = TRUE),
+#         IQR_low  = ~ quantile(., 0.25, na.rm = TRUE),
+#         IQR_high = ~ quantile(., 0.75, na.rm = TRUE)
+#       ),
+#       .names = "{.col}_{.fn}"
+#     )
+#   ) 
+# PA_summary_total <- dat %>%
+#   summarise(
+#     across(
+#       all_of(vars),
+#       list(
+#         N        = ~ sum(!is.na(.)),
+#         Mean     = ~ round(mean(., na.rm = TRUE),2),
+#         SD       = ~ round(sd(., na.rm = TRUE),2),
+#         Median   = ~ round(median(., na.rm = TRUE),2),
+#         Min      = ~ min(., na.rm = TRUE),
+#         Max      = ~ max(., na.rm = TRUE),
+#         IQR_low  = ~ quantile(., 0.25, na.rm = TRUE),
+#         IQR_high = ~ quantile(., 0.75, na.rm = TRUE)
+#       ),
+#       .names = "{.col}_{.fn}"
+#     )
+#   ) %>%
+#   mutate(sex = "Total") %>%
+#   select(sex, everything())  # make sex the first column for consistency
+# 
+# PA_summary <- bind_rows(PA_summary_sex, PA_summary_total) %>%
+#   pivot_longer(
+#     -sex,
+#     names_to = c("Variable", ".value"),
+#     names_pattern = "^(.*)_(N|Mean|SD|Median|Min|Max|IQR_low|IQR_high)$"
+#   )
+# 
+# 
+# Table_3.3 <-make_table(
+#   PA_summary,
+#   table_number = "3.3",
+#   folder_path = Table_folder_path,
+#   title = "Summary statistics on walking activity at baseline"
+# )
+
+# Table_3.3
+# ```
 
 
