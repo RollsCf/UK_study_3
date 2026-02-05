@@ -7,93 +7,33 @@ output: html_document
 
 
 ```{r setup, include=FALSE}
+library(here)
+source(here("scripts/00_setup.R"))
+
 knitr::opts_chunk$set(echo = FALSE)
-```
+knitr::opts_knit$set(root.dir = here())
 
 
-```{r libraries, include=FALSE}
 
-#load libraries
-
-library (data.table)
-library (dplyr)
-library (e1071)
-library (ggplot2)
-library (readr)
-library(tidyr)
-library(scales)
-library (forcats)
-library (flextable)
-library(table1)
-library(flextable)
-library(officer)
-library(broom)
-library(emmeans)
-
+here()
+list.files(here())
 
 ```
 
-```{r}
-# The following processing steps will create automated table outputs
-
-# Create folder path for Table and Figure results
-Table_folder_path <- "../results/tables"
-Figure_folder_path <- "../results/figures"
 
 
-# Function to make table from summary data
-make_table <- function(summary_df, table_number, folder_path, title = NULL) {
-  
-  ft <- summary_df |>
-    flextable() |>
-    autofit() |>
-    theme_vanilla()
-  
-  save_flextable(ft, table_number, folder_path, title)
-  
-  ft  # return the table for printing in markdown
-}
-
-# Function to save flextable outputs to word
-
-save_flextable <- function(ft, table_number, folder_path, title = NULL) {
-  # ensure folder exists
-  if (!dir.exists(folder_path)) dir.create(folder_path, recursive = TRUE)
-  
-  # construct path
-  file_name <- paste0("Table_", table_number, ".docx")
-  file_path <- file.path(folder_path, file_name)
-  
-  # start doc
-  doc <- read_docx()
-  
-  # add title (only if provided)
-  if (!is.null(title)) {
-    full_title <- paste0("Table ", table_number, ": ", title)
-    doc <- doc |>
-      body_add_par(full_title, style = "Normal") |>
-      body_add_par("", style = "Normal")  # blank line
-  }
-  
-  # add the table and save
-  doc <- doc |> body_add_flextable(ft)
-  print(doc, target = file_path)
-  
-  message("Saved: ", file_path)
-  invisible(file_path)
-}
-```
 
 Load dataset: This has already had exclusions applied to it, it is a complete case dataset
 
 ```{r}
-dat <- readRDS("../data_derived/complete_case_dat.Rds")
+cc_dat  <- readRDS(file.path(DATA_DERIVED, "cc_dat.Rds"))
+
 ```
 
 Data set of complete case participants for analysis
 ```{r}
 # Select variables for cross sectional analysis
-dat <- dat %>%
+cc_dat <- cc_dat %>%
   select (
     eid,
     age_education,
@@ -101,29 +41,12 @@ dat <- dat %>%
     SRF,
     Wrist,
     Hip,
-    duration_mod_PA,
-    num_days_mod_PA,
-    duration_vig_PA,
-    num_days_vig_PA,
-    duration_walk,
-    num_day_walk,
     IPAQ,
-    MET_mod = cc_MET_mod, 
-    mins_wk_mod = cc_mins_wk_mod,
-    MET_vig = cc_MET_vig,
-   mins_wk_vig =  cc_mins_wk_vig,
-   MET_MVPA = cc_MET_MVPA,
-   mins_wk_MVPA = cc_mins_wk_MVPA,
-    MET_walk = cc_MET_walk,
-    mins_wk_walk = cc_mins_wk_walk,
-    MET_summed = cc_MET_summed,
-    mins_wk_summed = cc_mins_wk_summed,
-    MET_mod_derived = MET_mod,
-    MET_vig_derived = MET_vig,
-    MET_walk_derived = MET_walk,
-    MVPA_derived = MVPA,
-    summed_MET_all = cc_MET_summed,
-   mins_wk_summed = cc_mins_wk_summed,
+    MET_mod = log_MET_mod, 
+    MET_vig = log_MET_vig,
+    MET_MVPA = log_MET_MVPA,
+    MET_walk = log_MET_walk,
+    summed_MET_all = log_summed_MET_all,
     date_assess_A0,
     assessment_country,
     age_A0,
@@ -136,24 +59,187 @@ dat <- dat %>%
     height,
     BMI,
     BMI_category,
-    lost_to_fu,
     approx_dob_derived,
   )
 ```
 
-### Univariate regression with each PA variable and overall fracture
+### Univariate regression with log of PA variable and overall fracture
 ```{r}
 # Convert character to factor
-dat <- dat %>%
+cc_dat <- cc_dat %>%
   mutate(SRF = factor(SRF, levels = c("No", "Yes")))
 
 
-glm(dat$SRF ~ dat$MET_mod, family = binomial)
-glm(dat$SRF ~ dat$MET_vig, family = binomial) 
-glm(dat$SRF ~ dat$MET_walk, family = binomial) 
-glm(dat$SRF ~ dat$MET_MVPA, family = binomial) 
+glm(cc_dat$SRF ~ cc_dat$MET_mod, family = binomial)
+glm(cc_dat$SRF ~ cc_dat$MET_vig, family = binomial) 
+glm(cc_dat$SRF ~ cc_dat$MET_walk, family = binomial) 
+glm(cc_dat$SRF ~ cc_dat$MET_MVPA, family = binomial) 
+glm(cc_dat$SRF ~ cc_dat$summed_MET_all, family = binomial) 
+
+PA_vars <- c("MET_mod", "MET_vig", "MET_walk", "MET_MVPA", "summed_MET_all")
+
+models <- list()
+
+for (var in PA_vars) {
+  fmla <- reformulate(var, response = "SRF")  # creates SRF ~ var
+  models[[var]] <- glm(fmla, data = cc_dat, family = binomial)
+}
+
+
+univariable_OR_table <- lapply(models, function(mod) {
+  tidy(mod, conf.int = TRUE, exponentiate = TRUE) %>%  # exponentiate = TRUE gives OR
+    filter(term != "(Intercept)") %>%                   # keep only the PA variable
+    select(term, estimate, conf.low, conf.high, p.value)
+}) %>%
+  bind_rows(.id = "Variable") %>%
+  rename(
+    OR = estimate,
+    `95% CI lower` = conf.low,
+    `95% CI upper` = conf.high,
+    `p-value` = p.value
+  )
+
+univariable_OR_table
+
+save_table_word(
+  df = univariable_OR_table,  # your data frame
+  table_number = "Table 3.3",  # can be numeric or string
+  folder_path = TABLES_DIR,       # uses setup-defined folder
+  title = "Univariable OR table"
+)
 
 ```
+
+As above but transformed to z-score to standardise
+
+```{r}
+PA_vars <- c("MET_mod", "MET_vig", "MET_walk", "MET_MVPA", "summed_MET_all")
+
+for (var in PA_vars) {
+  z_var <- paste0("z_", var)
+  cc_dat[[z_var]] <- (cc_dat[[var]] - mean(cc_dat[[var]], na.rm = TRUE)) / 
+                      sd(cc_dat[[var]], na.rm = TRUE)
+}
+z_PA_vars <- paste0("z_", PA_vars)
+
+
+models_z <- list()
+for (var in z_PA_vars) {
+  fmla <- reformulate(var, response = "SRF")  # SRF ~ z_MET_mod etc.
+  models_z[[var]] <- glm(fmla, data = cc_dat, family = binomial)
+}
+
+univariable_OR_table_z <- lapply(models_z, function(mod) {
+  tidy(mod, conf.int = TRUE, exponentiate = TRUE) %>% 
+    filter(term != "(Intercept)") %>% 
+    select(term, estimate, conf.low, conf.high, p.value)
+}) %>%
+  bind_rows(.id = "Variable") %>%
+  rename(
+    OR = estimate,
+    `95% CI lower` = conf.low,
+    `95% CI upper` = conf.high,
+    `p-value` = p.value
+  )
+
+univariable_OR_table_z
+
+save_table_word(
+  df = univariable_OR_table_z,
+  table_number = "Table 3.4",
+  folder_path = TABLES_DIR,
+  title = "Univariable OR table (per 1 SD increase in log PA)"
+)
+
+```
+
+# Wrist fracture
+```{r}
+PA_vars <- c("MET_mod", "MET_vig", "MET_walk", "MET_MVPA", "summed_MET_all")
+
+for (var in PA_vars) {
+  z_var <- paste0("z_", var)
+  cc_dat[[z_var]] <- (cc_dat[[var]] - mean(cc_dat[[var]], na.rm = TRUE)) / 
+                      sd(cc_dat[[var]], na.rm = TRUE)
+}
+z_PA_vars <- paste0("z_", PA_vars)
+
+
+models_z <- list()
+for (var in z_PA_vars) {
+  fmla <- reformulate(var, response = "Wrist")  # Wrist ~ z_MET_mod etc.
+  models_z[[var]] <- glm(fmla, data = cc_dat, family = binomial)
+}
+
+univariable_OR_table_z <- lapply(models_z, function(mod) {
+  tidy(mod, conf.int = TRUE, exponentiate = TRUE) %>% 
+    filter(term != "(Intercept)") %>% 
+    select(term, estimate, conf.low, conf.high, p.value)
+}) %>%
+  bind_rows(.id = "Variable") %>%
+  rename(
+    OR = estimate,
+    `95% CI lower` = conf.low,
+    `95% CI upper` = conf.high,
+    `p-value` = p.value
+  )
+
+univariable_OR_table_z
+
+save_table_word(
+  df = univariable_OR_table_z,
+  table_number = "Table 3.5",
+  folder_path = TABLES_DIR,
+  title = "Wrist fracture Univariable OR table (per 1 SD increase in log PA)"
+)
+
+```
+
+Hip fracture
+
+```{r}
+PA_vars <- c("MET_mod", "MET_vig", "MET_walk", "MET_MVPA", "summed_MET_all")
+
+for (var in PA_vars) {
+  z_var <- paste0("z_", var)
+  cc_dat[[z_var]] <- (cc_dat[[var]] - mean(cc_dat[[var]], na.rm = TRUE)) / 
+                      sd(cc_dat[[var]], na.rm = TRUE)
+}
+z_PA_vars <- paste0("z_", PA_vars)
+
+
+models_z <- list()
+for (var in z_PA_vars) {
+  fmla <- reformulate(var, response = "Hip")  # Hip ~ z_MET_mod etc.
+  models_z[[var]] <- glm(fmla, data = cc_dat, family = binomial)
+}
+
+univariable_OR_table_z <- lapply(models_z, function(mod) {
+  tidy(mod, conf.int = TRUE, exponentiate = TRUE) %>% 
+    filter(term != "(Intercept)") %>% 
+    select(term, estimate, conf.low, conf.high, p.value)
+}) %>%
+  bind_rows(.id = "Variable") %>%
+  rename(
+    OR = estimate,
+    `95% CI lower` = conf.low,
+    `95% CI upper` = conf.high,
+    `p-value` = p.value
+  )
+
+univariable_OR_table_z
+
+save_table_word(
+  df = univariable_OR_table_z,
+  table_number = "Table 3.6",
+  folder_path = TABLES_DIR,
+  title = "Hip fracture Univariable OR table (per 1 SD increase in log PA)"
+)
+
+```
+
+
+
 
 #### Scale to 30 min per week increments for interpretation
 

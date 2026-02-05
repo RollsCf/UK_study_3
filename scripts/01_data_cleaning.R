@@ -100,8 +100,8 @@ rename_map <- c(
   "num_days_vig_raw" = "Number of days/week of vigorous physical activity 10+ minutes | Instance 0",
   "num_day_walk_raw" = "Number of days/week walked 10+ minutes | Instance 0",
   "usual_walking_pace_raw" = "Usual walking pace | Instance 0",
-  "MV_rec_raw" = "At or above moderate/vigorous recommendation | Instance 0",
-  "MV_walk_rec_raw" = "At or above moderate/vigorous/walking recommendation | Instance 0",
+  "WHO_MVPA_raw" = "At or above moderate/vigorous recommendation | Instance 0",
+  "WHO_walk_raw" = "At or above moderate/vigorous/walking recommendation | Instance 0",
   "IPAQ_group_raw" = "IPAQ Activity Group | Instance 0",
   "MET_mod_raw" = "MET minutes per week for moderate activity | Instance 0",
   "MET_vig_raw" = "MET minutes per week for vigorous activity | Instance 0",
@@ -136,6 +136,8 @@ dat$IPAQ_clean     <- clean_character(dat$IPAQ_group_raw)
 dat$MET_mod_clean  <- clean_character(dat$MET_mod_raw)
 dat$MET_vig_clean  <- clean_character(dat$MET_vig_raw)
 dat$MET_walk_clean <- clean_character(dat$MET_walk_raw)
+dat$WHO_MVPA_raw  <- clean_character(dat$WHO_MVPA_raw)
+dat$WHO_walk_raw  <- clean_character(dat$WHO_walk_raw)
 
 # ----------------------------
 # Clean numeric columns

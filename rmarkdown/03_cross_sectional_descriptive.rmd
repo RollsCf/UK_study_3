@@ -60,6 +60,8 @@ cc_dat <- cc_dat %>%
     MVPA_derived = MVPA,
     summed_MET_all = cc_MET_summed,
    mins_wk_summed = cc_mins_wk_summed,
+   WHO_MVPA,
+   WHO_walk,
     date_assess_A0,
     assessment_country,
     age_A0,
@@ -84,7 +86,7 @@ library(table1)
 
 # Create table1 object
 table1 <- table1(
-  ~ age_A0 + ethnicity + tdi + qualification + weight + height + WC + BMI + SRF + Wrist + Hip + IPAQ | sex, 
+  ~ age_A0 + ethnicity + tdi + qualification + weight + height + WC + BMI + SRF + Wrist + Hip + IPAQ + WHO_MVPA + WHO_walk | sex, 
   data = cc_dat,
   overall = "Total"
 )
@@ -309,8 +311,32 @@ ggplot(cc_dat, aes(x = IPAQ)) +
   theme_minimal() 
 
 ```
+#### At above World Health Organisation MVPA
 
+```{r}
+ggplot(cc_dat, aes(x = WHO_MVPA)) +
+  geom_bar(fill = "lightblue", color = "black") +
+  labs(
+    title = "At or above WHO MVPA",
+    x = "At or above guidelines",
+    y = "Count"
+  ) +
+  theme_minimal() 
 
+```
+#### At above World Health Organisation MVPA + walk
+
+```{r}
+ggplot(cc_dat, aes(x = WHO_walk)) +
+  geom_bar(fill = "lightblue", color = "black") +
+  labs(
+    title = "At or above WHO MVPA+walk",
+    x = "At or above guidelines",
+    y = "Count"
+  ) +
+  theme_minimal() 
+
+```
 ### Physical activity status by outcome
 
 ```{r}
@@ -380,6 +406,39 @@ save_table_word(
 
 ```
 
+Binary exposure
+```{r}
+binary_exposures <- c("WHO_MVPA", "WHO_walk")
+
+PA_summary_binary <- lapply(binary_exposures, function(var) {
+  cc_dat %>%
+    group_by(across(all_of(var))) %>%
+    summarise(
+      N = n(),
+      Fracture_yes = sum(SRF == "Yes", na.rm = TRUE),
+      Fracture_no  = sum(SRF == "No", na.rm = TRUE),
+      Percent_fracture = round(Fracture_yes / N * 100, 1),
+      .groups = "drop"
+    ) %>%
+    rename(Category = all_of(var)) %>%
+    mutate(Exposure = var) %>%
+    select(Exposure, Category, everything())
+}) %>%
+  bind_rows()
+
+
+
+save_table_word(
+  df = PA_summary_binary,
+  table_number = "Table 3.3",
+  folder_path = TABLES_DIR,
+  title = "Fracture distribution by WHO binary PA exposures"
+)
+```
+
+
+
+
 ### Relationship between moderate and vigorous PA
 
 ```{r}
@@ -447,6 +506,8 @@ result$plots$log_MET_MVPA
 result$plots$log_MET_walk
 result$plots$log_summed_MET_all
 
+cc_dat <- result$data
+
 ```
 
 #### examine for variation at extremes of activity
@@ -507,7 +568,6 @@ PA_quintile_summary <- lapply(PA_vars, function(var) {
   select(PA_variable, Bin, N, Fractures, `Fracture %`) %>%
   arrange(PA_variable, Bin)
 
-PA_quintile_summary
 
 for (var in PA_vars) {
   bin_var <- paste0(var, "_q")
@@ -572,8 +632,6 @@ PA_extreme_summary <- lapply(PA_vars, function(var) {
   bind_rows() %>%
   arrange(PA_variable, Bin)
 
-PA_extreme_summary
-
 for (var in PA_vars) {
   extreme_var <- paste0(var, "_extreme")
   
@@ -610,7 +668,6 @@ PA_extreme_summary_age <- lapply(PA_vars, function(var) {
   bind_rows() %>%
   arrange(PA_variable, agegp_A0, Bin)
 
-PA_extreme_summary_age
 
 for (var in PA_vars) {
   extreme_var <- paste0(var, "_extreme")
@@ -649,8 +706,6 @@ PA_extreme_summary_age_sex <- lapply(PA_vars, function(var) {
   bind_rows() %>%
   arrange(PA_variable, agegp_A0, sex, Bin)
 
-PA_extreme_summary_age_sex
-
 for (var in PA_vars) {
   extreme_var <- paste0(var, "_extreme")
   
@@ -668,7 +723,13 @@ for (var in PA_vars) {
 ```
  
  
-
+```{r}
+#save rsf for analysis
+saveRDS(
+  cc_dat,
+  file.path(DATA_DERIVED, "cc_dat.rds")
+)
+```
 
 ```{r}
 # For use in TTE descriptive

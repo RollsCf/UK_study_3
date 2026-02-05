@@ -38,6 +38,8 @@ analysis_dat <-analysis_dat %>%
     MET_walk = MET_walk_clean,
     MVPA = MVPA_derived,
     summed_MET_all = summed_MET_all_raw,
+    WHO_MVPA = WHO_MVPA_raw,
+    WHO_walk = WHO_walk_raw,
     date_assess_A0 = date_assess_A0_raw,
     assessment_country,
     age_A0 = age_A0_raw,
@@ -81,7 +83,7 @@ middle_aged_dat <- middle_aged_dat %>%
 # Stratified by sex
 
 table1::table1(
-  ~ age_A0 + ethnicity + tdi + qualification + weight + height + WC + BMI + SRF + Wrist + Hip + IPAQ |sex, 
+  ~ age_A0 + ethnicity + tdi + qualification + weight + height + WC + BMI + SRF + Wrist + Hip + IPAQ + WHO_MVPA + WHO_walk |sex, 
   data = middle_aged_dat,
   overall = "Total",
 )
@@ -95,7 +97,7 @@ table1::table1(
 
 
 vars <-c("ethnicity", "SRF", "num_days_mod_PA", "num_days_vig_PA", "num_day_walk",
-         "IPAQ", "qualification", "tdi", "WC", "weight", "height", "BMI")
+         "IPAQ", "WHO_MVPA", "WHO_walk", "qualification", "tdi", "WC", "weight", "height", "BMI")
 
 response_rate <- function(df, var) {
   df %>%
@@ -249,10 +251,14 @@ gridExtra::grid.table(tab_exc)
 # Close the device
 dev.off()
 
-complete_case_dat <- dat
+complete_case_dat <- middle_aged_dat
 
-# Save the final dataset
-saveRDS(complete_case_dat, "data_derived/complete_case_dat.Rds")
+
+# Save cleaned outputs
+saveRDS(
+  complete_case_dat,
+  file.path(DATA_DERIVED, "complete_case_dat.rds")
+)
 
 # Compare complete case set (complete_case_dat) to full set (middle_aged_data)
 
@@ -285,8 +291,7 @@ complete_full_case_comparison <- middle_aged_dat %>%
     missing = "no"
   ) %>%
   modify_header(label = "**Variable**") %>%
-  modify_spanning_header(all_stat_cols() ~ "**Cohort type**") 
-
+  
 complete_full_case_comparison_gt <- complete_full_case_comparison %>%
   as_gt() %>%   
   tab_header(

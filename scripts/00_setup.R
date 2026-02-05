@@ -14,7 +14,8 @@ packages <- c(
   "purrr",
   "e1071",
   "gridExtra",
-  "officer"
+  "officer",
+  "broom"
  
 )
 
@@ -31,12 +32,9 @@ lapply(packages, library, character.only = TRUE)
 # 2.  Load environment variables from config.env
 dotenv::load_dot_env(here::here("config.env"))
 
-# Assign environment variables to R variables
-DATA_RAW     <- Sys.getenv("DATA_RAW")
-DATA_DERIVED <- Sys.getenv("DATA_DERIVED")
-
-# Results directories
-RESULTS_DIR <- Sys.getenv("RESULTS_DIR")
+DATA_RAW     <- here(Sys.getenv("DATA_RAW"))
+DATA_DERIVED <- here(Sys.getenv("DATA_DERIVED"))
+RESULTS_DIR  <- here(Sys.getenv("RESULTS_DIR"))
 
 if (RESULTS_DIR == "") {
   stop("RESULTS_DIR environment variable not set")
