@@ -10,81 +10,18 @@ knitr::opts_chunk$set(echo = FALSE)
 ```
 
 
-```{r libraries, include=FALSE}
+```{r set-up, include=FALSE}
 
-#load libraries
-
-library (data.table)
-library (dplyr)
-library (e1071)
-library (ggplot2)
-library (readr)
-library(tidyr)
-library(scales)
-library (forcats)
-library (flextable)
-library(table1)
-library(flextable)
-library(officer)
-
-
+source(here::here("scripts/00_setup.R"))
 ```
 
-```{r}
-# The following processing steps will create automated table outputs
 
-# Create folder path for Table and Figure results
-Table_folder_path <- "../results/tables"
-Figure_folder_path <- "../results/figures"
-
-
-# Function to make table from summary data
-make_table <- function(summary_df, table_number, folder_path, title = NULL) {
-  
-  ft <- summary_df |>
-    flextable() |>
-    autofit() |>
-    theme_vanilla()
-  
-  save_flextable(ft, table_number, folder_path, title)
-  
-  ft  # return the table for printing in markdown
-}
-
-# Function to save flextable outputs to word
-
-save_flextable <- function(ft, table_number, folder_path, title = NULL) {
-  # ensure folder exists
-  if (!dir.exists(folder_path)) dir.create(folder_path, recursive = TRUE)
-  
-  # construct path
-  file_name <- paste0("Table_", table_number, ".docx")
-  file_path <- file.path(folder_path, file_name)
-  
-  # start doc
-  doc <- read_docx()
-  
-  # add title (only if provided)
-  if (!is.null(title)) {
-    full_title <- paste0("Table ", table_number, ": ", title)
-    doc <- doc |>
-      body_add_par(full_title, style = "Normal") |>
-      body_add_par("", style = "Normal")  # blank line
-  }
-  
-  # add the table and save
-  doc <- doc |> body_add_flextable(ft)
-  print(doc, target = file_path)
-  
-  message("Saved: ", file_path)
-  invisible(file_path)
-}
-```
 
 Load dataset: This has already had exclusions applied to it, it is a complete case dataset
 
 ```{r}
-dat <- readRDS("../data_derived/complete_case_dat.Rds")
+cc_dat  <- readRDS(file.path(DATA_DERIVED, "complete_case_dat.Rds"))
+
 ```
 
 Data set of complete case participants for analysis
