@@ -60,6 +60,9 @@ cc_dat <- cc_dat %>%
     MVPA_derived = MVPA,
     summed_MET_all = cc_MET_summed,
    mins_wk_summed = cc_mins_wk_summed,
+   MET_mod_bin = cc_MET_mod_bin,
+   MET_vig_bin = cc_MET_vig_bin,
+   MET_MVPA_bin = cc_MET_MVPA_bin,
    WHO_MVPA,
    WHO_walk,
     date_assess_A0,
@@ -86,7 +89,7 @@ library(table1)
 
 # Create table1 object
 table1 <- table1(
-  ~ age_A0 + ethnicity + tdi + qualification + weight + height + WC + BMI + SRF + Wrist + Hip + IPAQ + WHO_MVPA + WHO_walk | sex, 
+  ~ age_A0 + ethnicity + tdi + qualification + weight + height + WC + BMI + SRF + Wrist + Hip + IPAQ+ MET_mod_bin + MET_vig_bin + MET_MVPA_bin | sex, 
   data = cc_dat,
   overall = "Total"
 )
@@ -236,6 +239,46 @@ hist(cc_dat$summed_MET_all,
      border = "black")
 
 ```
+#### As binary measures
+
+```{r}
+cc_dat %>%
+  count(MET_mod_bin) %>%
+  mutate(
+    percent = 100 * n / sum(n)
+  )
+
+cc_dat %>%
+  count(MET_vig_bin) %>%
+  mutate(
+    percent = 100 * n / sum(n)
+  )
+
+cc_dat %>%
+  count(MET_MVPA_bin) %>%
+  mutate(
+    percent = 100 * n / sum(n)
+  )
+
+```
+
+```{r}
+
+cc_dat %>%
+  select(MET_mod_bin, MET_vig_bin, MET_MVPA_bin) %>%
+  pivot_longer(everything(),
+               names_to = "measure",
+               values_to = "value") %>%
+  group_by(measure) %>%
+  summarise(prop = mean(value, na.rm = TRUE)) %>%
+  ggplot(aes(x = measure, y = prop)) +
+  geom_col(width = 0.6) +
+  scale_y_continuous(labels = scales::percent) +
+  labs(x = "MET measure", y = "Proportion with any activity") +
+  theme_minimal()
+
+```
+
 
 
 ```{r}
@@ -406,7 +449,7 @@ save_table_word(
 
 ```
 
-Binary exposure
+who binary exposure
 ```{r}
 binary_exposures <- c("WHO_MVPA", "WHO_walk")
 
@@ -433,6 +476,37 @@ save_table_word(
   table_number = "Table 3.3",
   folder_path = TABLES_DIR,
   title = "Fracture distribution by WHO binary PA exposures"
+)
+```
+####Other binary
+
+who binary exposure
+```{r}
+binary_exposures <- c("MET_mod_bin", "MET_vig_bin", "MET_MVPA_bin")
+
+PA_summary_binary <- lapply(binary_exposures, function(var) {
+  cc_dat %>%
+    group_by(across(all_of(var))) %>%
+    summarise(
+      N = n(),
+      Fracture_yes = sum(SRF == "Yes", na.rm = TRUE),
+      Fracture_no  = sum(SRF == "No", na.rm = TRUE),
+      Percent_fracture = round(Fracture_yes / N * 100, 1),
+      .groups = "drop"
+    ) %>%
+    rename(Category = all_of(var)) %>%
+    mutate(Exposure = var) %>%
+    select(Exposure, Category, everything())
+}) %>%
+  bind_rows()
+
+
+
+save_table_word(
+  df = PA_summary_binary,
+  table_number = "Table 3.4",
+  folder_path = TABLES_DIR,
+  title = "Fracture distribution by MET binary PA exposures"
 )
 ```
 
@@ -510,216 +584,225 @@ cc_dat <- result$data
 
 ```
 
-#### examine for variation at extremes of activity
+#### Examine fractures within activity groups ie filter by binary = yes
 
+```{r}
+exposures <- tibble::tibble(
+  bin_var = c("MET_mod_bin", "MET_vig_bin", "MET_MVPA_bin"),
+  met_var = c("MET_mod",     "MET_vig",     "MET_MVPA"),
+  label   = c("Moderate",    "Vigorous",    "Total MVPA")
+)
 
-#### For all variables - need to consider the split of PA
+analyse_active_MET <- function(data, bin_var, met_var, label) {
 
-````{r}
+  active <- data %>%
+    filter(.data[[bin_var]] == 1)
 
-create_quintile_bins <- function(data, vars) {
-  binned_data <- data
-  
-  for (var in vars) {
-    bin_var <- paste0(var, "_q")  # _q for quintile
-    
-    # 1️⃣ Calculate breaks and make unique
-    breaks <- unique(quantile(binned_data[[var]], probs = seq(0, 1, 0.2), na.rm = TRUE))
-    
-    # 2️⃣ Only cut if there is more than one unique break
-    if (length(breaks) > 1) {
-      binned_data[[bin_var]] <- cut(
-        binned_data[[var]],
-        breaks = breaks,
-        include.lowest = TRUE,
-        labels = paste0("Q", seq_len(length(breaks) - 1))
-      )
-    } else {
-      # If all values are the same, put in single bin
-      binned_data[[bin_var]] <- factor("Q1", levels = "Q1")
-    }
-  }
-  
-  return(binned_data)
-}
-
-PA_vars <- c("MET_mod", "MET_vig", "MET_walk", "MET_MVPA", "summed_MET_all")
-
-cc_dat <- create_quintile_bins(cc_dat, PA_vars)
-
-# Check new columns
-head(cc_dat[, c(PA_vars, paste0(PA_vars, "_q"))])
-
-
-
-PA_quintile_summary <- lapply(PA_vars, function(var) {
-  bin_var <- paste0(var, "_q")
-  cc_dat %>%
-    group_by(.data[[bin_var]]) %>%
+  # ---- summary table (printed) ----
+  summary_tbl <- active %>%
     summarise(
       N = n(),
-      Fractures = sum(SRF == "Yes", na.rm = TRUE),
-      `Fracture %` = round(100 * mean(SRF == "Yes", na.rm = TRUE), 2)
-    ) %>%
-    mutate(PA_variable = var) %>%
-    rename(Bin = .data[[bin_var]])
-}) %>%
-  bind_rows() %>%
-  select(PA_variable, Bin, N, Fractures, `Fracture %`) %>%
-  arrange(PA_variable, Bin)
+      Fracture_yes = sum(SRF == "Yes", na.rm = TRUE),
+      Fracture_no  = sum(SRF == "No",  na.rm = TRUE)
+    )
 
+  print(paste("Exposure:", label))
+  print(summary_tbl)
 
-for (var in PA_vars) {
-  bin_var <- paste0(var, "_q")
-  
-  p <- ggplot(cc_dat, aes(x = .data[[bin_var]], y = as.numeric(SRF == "Yes"))) +
-    geom_bar(stat = "summary", fun = "mean", fill = "steelblue", alpha = 0.7) +
-    ylab("Proportion with fracture") +
-    xlab(paste0(var, " (quintiles)")) +
-    ggtitle(paste0("Fracture proportion by ", var, " quintiles")) +
-    theme_minimal() +
-    ylim(0, 1)
-  
+  # ---- plot ----
+  p <- ggplot(active, aes(x = SRF, y = .data[[met_var]])) +
+    geom_boxplot(outlier.shape = NA, alpha = 0.6) +
+    geom_jitter(width = 0.15, alpha = 0.3) +
+    scale_y_log10() +
+    labs(
+      x = "Fracture status",
+      y = paste(label, "MET-minutes (log scale)"),
+      title = paste(label, "MET-minutes among active participants")
+    ) +
+    theme_minimal()
+
   print(p)
 }
 
+plots <- purrr::pmap(
+  exposures,
+  ~ analyse_active_MET(
+      data   = cc_dat,
+      bin_var = ..1,
+      met_var = ..2,
+      label   = ..3
+    )
+)
 
-````
+```
+
+
+#### examine for variation at extremes of activity
+
+
+#### For all variables - need to consider the split of PA given all data even transformed is highly 0 inflated. Create meaningful bins.
+
+
+
 #### Extreme behaviour
 
 ```{r}
 PA_vars <- c("MET_mod", "MET_vig", "MET_walk", "MET_MVPA")
 
 for (var in PA_vars) {
-  extreme_var <- paste0(var, "_extreme")
-  
-  # 1️⃣ Compute 10th and 90th percentiles
-  p10 <- quantile(cc_dat[[var]], 0.10, na.rm = TRUE)
-  p90 <- quantile(cc_dat[[var]], 0.90, na.rm = TRUE)
-  
-  # 2️⃣ Make sure breaks are strictly increasing
-  breaks <- unique(c(-Inf, p10, p90, Inf))
-  
-  # 3️⃣ Only cut if we have enough unique breaks
-  if (length(breaks) == 4) {  # -Inf, p10, p90, Inf
-    cc_dat[[extreme_var]] <- cut(
-      cc_dat[[var]],
-      breaks = breaks,
-      labels = c("Bottom 10%", "Middle 80%", "Top 10%"),
-      right = TRUE
-    )
-  } else {
-    # Fallback: if too few unique values, put everything in Middle
-    cc_dat[[extreme_var]] <- factor("Middle 80%", levels = c("Bottom 10%", "Middle 80%", "Top 10%"))
-  }
+  extreme_var <- paste0(var, "_group")  # new variable name
+
+  # 1️⃣ Compute 95th percentile among active participants only
+  p99 <- quantile(cc_dat[[var]][cc_dat[[var]] > 0], 0.99, na.rm = TRUE)
+
+  # 2️⃣ Create three-group factor: 0, active majority, very high
+  cc_dat[[extreme_var]] <- case_when(
+    cc_dat[[var]] == 0 ~ "0 activity",
+    cc_dat[[var]] > 0 & cc_dat[[var]] <= p99 ~ "Active (majority)",
+    cc_dat[[var]] > p99 ~ "Very high",
+    TRUE ~ NA_character_  # preserve NA
+  )
+
+  # 3️⃣ Convert to factor with logical order
+  cc_dat[[extreme_var]] <- factor(
+    cc_dat[[extreme_var]],
+    levels = c("0 activity", "Active (majority)", "Very high")
+  )
 }
 
+# 4️⃣ Summarize fractures per group
+PA_group_summary <- lapply(PA_vars, function(var) {
+  group_var <- paste0(var, "_group")
 
-# 2️⃣ Summarize fractures per extreme bin
-PA_extreme_summary <- lapply(PA_vars, function(var) {
-  extreme_var <- paste0(var, "_extreme")
-  
   cc_dat %>%
-    group_by(.data[[extreme_var]]) %>%
+    group_by(.data[[group_var]]) %>%
     summarise(
       N = n(),
       Fractures = sum(SRF == "Yes", na.rm = TRUE),
-      `Fracture %` = round(100 * mean(SRF == "Yes", na.rm = TRUE), 2)
+      `Fracture %` = round(100 * mean(SRF == "Yes", na.rm = TRUE), 2),
+      .groups = "drop"
     ) %>%
     mutate(PA_variable = var) %>%
-    rename(Bin = .data[[extreme_var]])
+    rename(Bin = .data[[group_var]])
 }) %>%
   bind_rows() %>%
   arrange(PA_variable, Bin)
 
+# 5️⃣ Plot fracture proportion per group
 for (var in PA_vars) {
-  extreme_var <- paste0(var, "_extreme")
-  
-  p <- ggplot(cc_dat, aes(x = .data[[extreme_var]], y = as.numeric(SRF == "Yes"))) +
+  group_var <- paste0(var, "_group")
+
+  p <- ggplot(cc_dat, aes(x = .data[[group_var]], y = as.numeric(SRF == "Yes"))) +
     geom_bar(stat = "summary", fun = "mean", fill = "steelblue", alpha = 0.7) +
     ylab("Proportion with fracture") +
     xlab(paste0(var, " (minutes/week)")) +
-    ggtitle(paste0("Fracture proportion by ", var, " extremes")) +
+    ggtitle(paste0("Fracture proportion by ", var, " groups")) +
     theme_minimal() +
     ylim(0, 1)
-  
+
   print(p)
 }
+
 ```
 
 #### Examined by 10 year age group
 ```{r}
-PA_vars <- c("MET_mod", "MET_vig", "MET_walk", "MET_MVPA")
+PA_group_vars <- c("MET_mod_group", "MET_vig_group",  "MET_MVPA_group")
 
-# Loop through variables
-PA_extreme_summary_age <- lapply(PA_vars, function(var) {
-  extreme_var <- paste0(var, "_extreme")
-  
+for (var in PA_group_vars) {
+  cc_dat[[var]] <- factor(
+    cc_dat[[var]],
+    levels = c("0 activity", "Active (majority)", "Very high")
+  )
+}
+
+PA_group_summary_age <- lapply(PA_group_vars, function(var) {
   cc_dat %>%
-    group_by(agegp_A0, .data[[extreme_var]]) %>%
+    group_by(agegp_A0, .data[[var]]) %>%
     summarise(
       N = n(),
       Fractures = sum(SRF == "Yes", na.rm = TRUE),
-      `Fracture %` = round(100 * mean(SRF == "Yes", na.rm = TRUE), 2)
+      `Fracture %` = round(100 * mean(SRF == "Yes", na.rm = TRUE), 2),
+      .groups = "drop"
     ) %>%
     mutate(PA_variable = var) %>%
-    rename(Bin = .data[[extreme_var]])
+    rename(Bin = .data[[var]])
 }) %>%
   bind_rows() %>%
   arrange(PA_variable, agegp_A0, Bin)
 
-
-for (var in PA_vars) {
-  extreme_var <- paste0(var, "_extreme")
-  
-  p <- ggplot(cc_dat, aes(x = .data[[extreme_var]], y = as.numeric(SRF == "Yes"))) +
+for (var in PA_group_vars) {
+  p <- ggplot(cc_dat, aes(x = .data[[var]], y = as.numeric(SRF == "Yes"))) +
     geom_bar(stat = "summary", fun = "mean", fill = "steelblue", alpha = 0.7) +
-    facet_wrap(~agegp_A0) +  # stratify by age group
+    facet_wrap(~agegp_A0) +                     # stratify by age
     ylab("Proportion with fracture") +
     xlab(paste0(var, " (minutes/week)")) +
-    ggtitle(paste0("Fracture proportion by ", var, " extremes and age group")) +
+    ggtitle(paste0("Fracture proportion by ", var, " groups and age")) +
     theme_minimal() +
-    ylim(0, 1)
+    coord_cartesian(ylim = c(0,1))             
   
   print(p)
 }
+
 
 ```
  #### age and sex
  
 ```{r}
-PA_vars <- c("MET_mod", "MET_vig", "MET_walk", "MET_MVPA")
-
-PA_extreme_summary_age_sex <- lapply(PA_vars, function(var) {
-  extreme_var <- paste0(var, "_extreme")
-  
+PA_group_summary_age_sex <- lapply(PA_group_vars, function(var) {
   cc_dat %>%
-    group_by(agegp_A0, sex, .data[[extreme_var]]) %>%
+    group_by(agegp_A0, sex, .data[[var]]) %>%       # stratify by age AND sex
     summarise(
       N = n(),
       Fractures = sum(SRF == "Yes", na.rm = TRUE),
-      `Fracture %` = round(100 * mean(SRF == "Yes", na.rm = TRUE), 2)
+      `Fracture %` = round(100 * mean(SRF == "Yes", na.rm = TRUE), 2),
+      .groups = "drop"
     ) %>%
     mutate(PA_variable = var) %>%
-    rename(Bin = .data[[extreme_var]])
+    rename(Bin = .data[[var]])
 }) %>%
   bind_rows() %>%
   arrange(PA_variable, agegp_A0, sex, Bin)
 
-for (var in PA_vars) {
-  extreme_var <- paste0(var, "_extreme")
-  
-  p <- ggplot(cc_dat, aes(x = .data[[extreme_var]], y = as.numeric(SRF == "Yes"))) +
+for (var in PA_group_vars) {
+  p <- ggplot(cc_dat, aes(x = .data[[var]], y = as.numeric(SRF == "Yes"))) +
     geom_bar(stat = "summary", fun = "mean", fill = "steelblue", alpha = 0.7) +
-    facet_grid(agegp_A0 ~ sex) +  # stratify by age group (rows) and sex (columns)
+    facet_grid(sex ~ agegp_A0) +                 # stratify by sex (rows) and age (columns)
     ylab("Proportion with fracture") +
     xlab(paste0(var, " (minutes/week)")) +
-    ggtitle(paste0("Fracture proportion by ", var, " extremes, age group & sex")) +
+    ggtitle(paste0("Fracture proportion by ", var, " groups, age, and sex")) +
     theme_minimal() +
-    ylim(0, 1)
-  
+    coord_cartesian(ylim = c(0,1))               # safe y-axis
+     
   print(p)
 }
+
+```
+### Descriptive
+```{r}
+PA_group_descriptives <- lapply(PA_group_vars, function(var) {
+  cc_dat %>%
+    group_by(agegp_A0, sex, .data[[var]]) %>%
+    summarise(
+      N = n(),
+      Fractures = sum(SRF == "Yes", na.rm = TRUE),
+      `Fracture %` = round(100 * mean(SRF == "Yes", na.rm = TRUE), 2),
+      Median_age = round(median(age_A0, na.rm = TRUE), 1),          # example continuous variable
+      Mean_BMI = round(mean(BMI, na.rm = TRUE), 1),              # another example
+      .groups = "drop"
+    ) %>%
+    mutate(PA_variable = var) %>%
+    rename(PA_group = .data[[var]])
+}) %>%
+  bind_rows() %>%
+  arrange(PA_variable, agegp_A0, sex, PA_group)
+
+save_table_word(
+  df = PA_group_descriptives,
+  table_number = "Table 3.5",
+  folder_path = TABLES_DIR,
+  title = "Participant demographics and fracture distribution by PA groups, age, and sex"
+)
 ```
  
  

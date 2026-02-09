@@ -268,6 +268,25 @@ dat_clean <- dat_clean %>%
     MMVPA_derived_num = as_numeric_safe(MVPA_derived)
   )
 
+
+# Create binary indicator for each of mod, vig and MVPA i.e 0 vs and other value
+
+# Helper function to make binary variable
+
+to_binary <- function(x) as.integer(x > 0)
+
+
+# apply to variables
+vars <- c("cc_MET_mod", "cc_MET_vig", "cc_MET_MVPA")
+
+dat_clean <- dat_clean %>%
+  mutate(across(all_of(vars),
+                to_binary,
+                .names = "{.col}_bin"))
+
+
+
+
 ###### Outcome data variables
 
 # Create binary fracture indicator for a given bone
