@@ -19,7 +19,7 @@ list.files(here())
 
 ```
 
-Load dataset: This has already had exclusions applied to it, it is a complete case dataset
+Load dataset: This has already had exclusions applied to it based on demographic data. PA exclusions are based on whether the num days per week activity was complete. This means that derived combined variables like MVPA still have some missingness that we will need to deal with later on.
 
 ```{r}
 cc_dat  <- readRDS(file.path(DATA_DERIVED, "complete_case_dat.Rds"))
@@ -84,7 +84,7 @@ library(table1)
 
 # Create table1 object
 table1 <- table1(
-  ~ age_A0 + ethnicity + tdi + qualification + weight + height + WC + BMI + SRF + Wrist + Hip + IPAQ+ MET_mod_bin + MET_vig_bin + MET_MVPA_bin | sex, 
+  ~ age_A0 + ethnicity + tdi + qualification + weight + height + WC + BMI + SRF + Wrist + Hip + num_day_mod_bin + num_day_vig_bin + num_day_walk_bin | sex, 
   data = cc_dat,
   overall = "Total"
 )
@@ -92,7 +92,7 @@ table1 <- table1(
 
 # Build the PNG file in FIGURES_DIR
 png(
-  filename = file.path(FIGURES_DIR, "Figure_2_Table1.png"),
+  filename = file.path(FIGURES_DIR, "Figure_2_demo.png"),
   width = 1200,
   height = 800,
   res = 150
@@ -159,82 +159,9 @@ ggplot(cc_dat, aes(x = ethnicity)) +
 ```
 
 
-### Exposure variables (PA)
-
-Participants were asked about activities undertaken in the last 4 weeks including frequency, intensity and duration. These are reported as raw values. From these a number of  Metabolic Equivalent Task (MET) minutes of activity were also derived. 
-
-Activity measures (split into moderate, vigorous, walking and summed activity)
-
-- number of days of activity per week
-- duration of activity per week
-- mins/wk of activity
-- MET mins of activity per week
-
-
-#### Treatment of outliers (already applied to the data by UKB)
-- For individual catagories of walking, moderate and vig activity exercise was capped at a maximum of 180 minutes a day, allowing a maximum of 21 hours a week (3 hours*7) 
-- Extreme outliers where the sum of walking, moderate and vigorous time variables exceeds 960 minutes (16 hours a day) the whole record is excluded from the analysis as unlikely. 
-
-#### Missing data
-We are using only participants with all of duration and number of days/wk of activity in our main analysis. Those with missing values in either column are considered NA in the MET calculations and mins/wk calculations. This differs to the UKB anaysis where some data is imputed if just duration is missing. We will use this for comparison in the sensitivity analysis.
-
-#### Unable to walk
-- For those who respond that they were unable to walk instead of removing them they are given a value of 0 under time spent walking.
-
-#### Derivation and cutpoints
-
-The full IPAQ calculates total physical activity as a combination of both leisure time PA (LTPA) as well as domains of work and normal activity - as such the resulting median MET-minutes is higher than for participation in LTPA alone. The general public health recommendations of 30 mins of MVPA are relatively low with most adults being able to achieve this regardless of leisure time activity. To look at the health benefits of LTPA higher cut point thresholds are needed for UKB IPAQ data.
-
+### Exposure variables (PA) - starting with binary measures of whether participants did any mod,vig PA or walked.
 
 ```{r}
-hist(cc_dat$MET_mod, 
-     main = "Histogram of MET mins/week vigorous activity", 
-     xlab = "MET mins/week of vigorous activity", 
-     ylab = "Frequency", 
-     col = "lightblue", 
-     border = "black")
-```
-
-```{r}
-hist(cc_dat$MET_MVPA, 
-     main = "Histogram of MET mins/week Moderate and vigorous (MVPA) activity", 
-     xlab = "MET mins/week of MVPA", 
-     ylab = "Frequency", 
-     col = "lightblue", 
-     border = "black")
-```
-
-```{r}
-
-hist(cc_dat$MET_walk, 
-     main = "Histogram of MET mins/week of walking", 
-     xlab = "MET mins/week of all activity", 
-     ylab = "Frequency", 
-     col = "lightblue", 
-     border = "black")
-
-```
-
-#### As binary measures
-
-```{r}
-cc_dat %>%
-  count(MET_mod_bin) %>%
-  mutate(
-    percent = 100 * n / sum(n)
-  )
-
-cc_dat %>%
-  count(MET_vig_bin) %>%
-  mutate(
-    percent = 100 * n / sum(n)
-  )
-
-cc_dat %>%
-  count(MET_MVPA_bin) %>%
-  mutate(
-    percent = 100 * n / sum(n)
-  )
 
 cc_dat %>%
   count(num_day_mod_bin) %>%
@@ -253,13 +180,185 @@ cc_dat %>%
   mutate(
     percent = 100 * n / sum(n)
   )
+```
+```{r}
+
+cc_dat %>%
+  select( num_day_mod_bin, num_day_vig_bin, num_day_walk_bin) %>%
+  pivot_longer(everything(),
+               names_to = "measure",
+               values_to = "value") %>%
+  group_by(measure) %>%
+  summarise(prop = mean(value, na.rm = TRUE)) %>%
+  ggplot(aes(x = measure, y = prop)) +
+  geom_col(width = 0.6) +
+  scale_y_continuous(labels = scales::percent) +
+  labs(x = "MET measure", y = "Proportion with any activity") +
+  theme_minimal()
+
+```
+#### Activity status by outcome
+
+```{r}
+binary_exposures <- c( "num_day_mod_bin", "num_day_vig_bin", "num_day_walk_bin")
+
+PA_summary_binary <- lapply(binary_exposures, function(var) {
+  cc_dat %>%
+    group_by(across(all_of(var))) %>%
+    summarise(
+      N = n(),
+      Fracture_yes = sum(SRF == "Yes", na.rm = TRUE),
+      Fracture_no  = sum(SRF == "No", na.rm = TRUE),
+      Percent_fracture = round(Fracture_yes / N * 100, 1),
+      .groups = "drop"
+    ) %>%
+    rename(Category = all_of(var)) %>%
+    mutate(Exposure = var) %>%
+    select(Exposure, Category, everything())
+}) %>%
+  bind_rows()
+
+
+
+save_table_word(
+  df = PA_summary_binary,
+  table_number = "Table 3.1",
+  folder_path = TABLES_DIR,
+  title = "Fracture distribution activity status"
+)
+```
+
+#### Examine fractures within activity groups ie filter by binary = yes
+
+```{r}
+exposures <- tibble::tibble(
+  bin_var = c( "num_day_mod_bin", "num_day_vig_bin"),
+  met_var = c(  "num_days_mod_PA", "num_days_vig_PA"),
+  label   = c( "Does moderate activity", "Does vigorous activity")
+)
+
+analyse_active_MET <- function(data, bin_var, met_var, label) {
+
+  active <- data %>%
+    filter(.data[[bin_var]] == 1)
+
+  # ---- summary table (printed) ----
+  summary_tbl <- active %>%
+    summarise(
+      N = n(),
+      Fracture_yes = sum(SRF == "Yes", na.rm = TRUE),
+      Fracture_no  = sum(SRF == "No",  na.rm = TRUE)
+    )
+
+  print(paste("Exposure:", label))
+  print(summary_tbl)
+
+  # ---- plot ----
+  p <- ggplot(active, aes(x = SRF, y = .data[[met_var]])) +
+    geom_boxplot(outlier.shape = NA, alpha = 0.6) +
+    geom_jitter(width = 0.15, alpha = 0.3) +
+    scale_y_log10() +
+    labs(
+      x = "Fracture status",
+      y = paste(label, ""),
+      title = paste(label, "number of days per week of activity")
+    ) +
+    theme_minimal()
+
+  print(p)
+}
+
+plots <- purrr::pmap(
+  exposures,
+  ~ analyse_active_MET(
+      data   = cc_dat,
+      bin_var = ..1,
+      met_var = ..2,
+      label   = ..3
+    )
+)
+
+```
+
+
+### For dose response analysis we will use the MET calculations which means filtering the complete case analysis further by IPAQ groups. This will retain only those with full data across duration and intensity domains.
+
+```{r}
+
+# Save cleaned outputs
+saveRDS(
+  cc_dat,
+  file.path(DATA_DERIVED, "IPAQ_dat.rds")
+)
+```
+
+```{r}
+
+IPAQ_dat_raw  <- readRDS(file.path(DATA_DERIVED, "IPAQ_dat.Rds"))
+
+IPAQ_dat <- IPAQ_dat_raw %>%
+  filter(!is.na(IPAQ))
+```
+
+
+
+```{r}
+hist(IPAQ_dat$MET_mod, 
+     main = "Histogram of MET mins/week vigorous activity", 
+     xlab = "MET mins/week of vigorous activity", 
+     ylab = "Frequency", 
+     col = "lightblue", 
+     border = "black")
+```
+
+```{r}
+hist(IPAQ_dat$MET_MVPA, 
+     main = "Histogram of MET mins/week Moderate and vigorous (MVPA) activity", 
+     xlab = "MET mins/week of MVPA", 
+     ylab = "Frequency", 
+     col = "lightblue", 
+     border = "black")
+```
+
+```{r}
+
+hist(IPAQ_dat$MET_walk, 
+     main = "Histogram of MET mins/week of walking", 
+     xlab = "MET mins/week of all activity", 
+     ylab = "Frequency", 
+     col = "lightblue", 
+     border = "black")
+
+```
+
+#### As binary measures
+
+```{r}
+IPAQ_dat %>%
+  count(MET_mod_bin) %>%
+  mutate(
+    percent = 100 * n / sum(n)
+  )
+
+IPAQ_dat %>%
+  count(MET_vig_bin) %>%
+  mutate(
+    percent = 100 * n / sum(n)
+  )
+
+IPAQ_dat %>%
+  count(MET_MVPA_bin) %>%
+  mutate(
+    percent = 100 * n / sum(n)
+  )
+
 
 ```
 
 ```{r}
 
-cc_dat %>%
-  select(MET_mod_bin, MET_vig_bin, MET_MVPA_bin, num_day_mod_bin, num_day_vig_bin, num_day_walk_bin) %>%
+IPAQ_dat %>%
+  select(MET_mod_bin, MET_vig_bin, MET_MVPA_bin) %>%
   pivot_longer(everything(),
                names_to = "measure",
                values_to = "value") %>%
@@ -278,7 +377,7 @@ cc_dat %>%
 ```{r}
 vars <- c("MET_mod", "MET_vig", "MET_MVPA","MET_walk")
 
-PA_summary_sex <- cc_dat %>%
+PA_summary_sex <- IPAQ_dat %>%
   group_by(sex) %>%
   summarise(
     across(
@@ -325,7 +424,7 @@ PA_summary <- bind_rows(PA_summary_sex, PA_summary_total) %>%
 
 save_table_word(
   df = PA_summary,  # your data frame
-  table_number = "Table 3.1",  # can be numeric or string
+  table_number = "Table 3.2",  # can be numeric or string
   folder_path = TABLES_DIR,       # uses setup-defined folder
   title = "Summary statistics on Met mins/wk of activity at baseline"
 )
@@ -339,7 +438,7 @@ Based on activity frequency, duration and intensity an activity group is derived
 # While this is a complete case dataset there are still NA in IPAQ as it is derived downstream of where we ran exclusions. It has a considerably higher degree of missingness
 
 ```{r }
-ggplot(cc_dat, aes(x = IPAQ)) +
+ggplot(IPAQ_dat, aes(x = IPAQ)) +
   geom_bar(fill = "lightblue", color = "black") +
   labs(
     title = "Derived IPAQ activity group",
@@ -349,21 +448,11 @@ ggplot(cc_dat, aes(x = IPAQ)) +
   theme_minimal() 
 
 ```
-```{r }
-ggplot(cc_dat, aes(x = num_day_mod_bin)) +
-  geom_bar(fill = "lightblue", color = "black") +
-  labs(
-    title = "Undertakes mod activity",
-    x = "Yes/No",
-    y = "Count"
-  ) +
-  theme_minimal() 
 
-```
 #### At above World Health Organisation MVPA
 
 ```{r}
-ggplot(cc_dat, aes(x = WHO_MVPA)) +
+ggplot(IPAQ_dat, aes(x = WHO_MVPA)) +
   geom_bar(fill = "lightblue", color = "black") +
   labs(
     title = "At or above WHO MVPA",
@@ -376,7 +465,7 @@ ggplot(cc_dat, aes(x = WHO_MVPA)) +
 #### At above World Health Organisation MVPA + walk
 
 ```{r}
-ggplot(cc_dat, aes(x = WHO_walk)) +
+ggplot(IPAQ_dat, aes(x = WHO_walk)) +
   geom_bar(fill = "lightblue", color = "black") +
   labs(
     title = "At or above WHO MVPA+walk",
@@ -391,13 +480,13 @@ ggplot(cc_dat, aes(x = WHO_walk)) +
 ```{r}
 PA_vars <- c("MET_mod", "MET_vig", "MET_MVPA")
 
-cc_dat <- cc_dat %>%
+IPAQ_dat <- IPAQ_dat %>%
   mutate(
     Fracture = factor(SRF, levels = c(0, 1), labels = c("No fracture", "Fracture"))
   )
 
 # Summarise by fracture
-PA_summary_fracture <- cc_dat %>%
+PA_summary_fracture <- IPAQ_dat %>%
   group_by(SRF) %>%
   summarise(
     across(
@@ -417,7 +506,7 @@ PA_summary_fracture <- cc_dat %>%
   )
 
 # Summarise total (all participants)
-PA_summary_total <- cc_dat %>%
+PA_summary_total <- IPAQ_dat %>%
   summarise(
     across(
       all_of(PA_vars),
@@ -448,7 +537,7 @@ PA_summary <- bind_rows(PA_summary_fracture, PA_summary_total) %>%
 
 save_table_word(
   df = PA_summary,  # your data frame
-  table_number = "Table 3.2",  # can be numeric or string
+  table_number = "Table 3.3",  # can be numeric or string
   folder_path = TABLES_DIR,       # uses setup-defined folder
   title = "Summary statistics on Met mins/wk of activity at baseline by fracture status"
 )
@@ -460,38 +549,7 @@ who binary exposure
 binary_exposures <- c("WHO_MVPA", "WHO_walk")
 
 PA_summary_binary <- lapply(binary_exposures, function(var) {
-  cc_dat %>%
-    group_by(across(all_of(var))) %>%
-    summarise(
-      N = n(),
-      Fracture_yes = sum(SRF == "Yes", na.rm = TRUE),
-      Fracture_no  = sum(SRF == "No", na.rm = TRUE),
-      Percent_fracture = round(Fracture_yes / N * 100, 1),
-      .groups = "drop"
-    ) %>%
-    rename(Category = all_of(var)) %>%
-    mutate(Exposure = var) %>%
-    select(Exposure, Category, everything())
-}) %>%
-  bind_rows()
-
-
-
-save_table_word(
-  df = PA_summary_binary,
-  table_number = "Table 3.3",
-  folder_path = TABLES_DIR,
-  title = "Fracture distribution by WHO binary PA exposures"
-)
-```
-
-####Other binary
- binary exposure
-```{r}
-binary_exposures <- c("MET_mod_bin", "MET_vig_bin", "MET_MVPA_bin", "num_day_mod_bin", "num_day_vig_bin", "num_day_walk_bin")
-
-PA_summary_binary <- lapply(binary_exposures, function(var) {
-  cc_dat %>%
+  IPAQ_dat %>%
     group_by(across(all_of(var))) %>%
     summarise(
       N = n(),
@@ -512,17 +570,49 @@ save_table_word(
   df = PA_summary_binary,
   table_number = "Table 3.4",
   folder_path = TABLES_DIR,
+  title = "Fracture distribution by WHO binary PA exposures"
+)
+```
+
+
+ binary exposure
+ 
+ Aid interpreting this: Someone can do no moderate and some vigorous activity, or no vig and some mode. The only fracture catagory that should combine is yes MVPA which should include mod and vig - but wont be an exact summation of fracture numbers as some are the same participant and same fracture
+ 
+```{r}
+binary_exposures <- c("MET_mod_bin", "MET_vig_bin", "MET_MVPA_bin")
+
+PA_summary_binary <- lapply(binary_exposures, function(var) {
+  IPAQ_dat %>%
+    group_by(across(all_of(var))) %>%
+    summarise(
+      N = n(),
+      Fracture_yes = sum(SRF == "Yes", na.rm = TRUE),
+      Fracture_no  = sum(SRF == "No", na.rm = TRUE),
+      Percent_fracture = round(Fracture_yes / N * 100, 1),
+      .groups = "drop"
+    ) %>%
+    rename(Category = all_of(var)) %>%
+    mutate(Exposure = var) %>%
+    select(Exposure, Category, everything())
+}) %>%
+  bind_rows()
+
+
+
+save_table_word(
+  df = PA_summary_binary,
+  table_number = "Table 3.5",
+  folder_path = TABLES_DIR,
   title = "Fracture distribution by MET binary PA exposures"
 )
 ```
 
 
-
-
 ### Relationship between moderate and vigorous PA
 
 ```{r}
-ggplot(cc_dat, aes(MET_mod, MET_vig)) + geom_point()
+ggplot(IPAQ_dat, aes(MET_mod, MET_vig)) + geom_point()
 ```
 
 
@@ -574,7 +664,7 @@ log_transform_plot <- function(data, vars, add_one = TRUE, bins = 50) {
 
 ```{r}
 
-result <- log_transform_plot(cc_dat, vars = c("MET_mod", "MET_vig", "MET_MVPA", "MET_walk"))
+result <- log_transform_plot(IPAQ_dat, vars = c("MET_mod", "MET_vig", "MET_MVPA", "MET_walk"))
 
 # Access the transformed data
 cc_dat_transformed <- result$data
@@ -586,7 +676,7 @@ result$plots$log_MET_MVPA
 result$plots$log_MET_walk
 
 
-cc_dat <- result$data
+IPAQ_dat <- result$data
 
 ```
 
@@ -594,12 +684,9 @@ cc_dat <- result$data
 
 ```{r}
 exposures <- tibble::tibble(
-  bin_var = c("MET_mod_bin", "MET_vig_bin", "MET_MVPA_bin",
-              "num_day_mod_bin", "num_day_vig_bin"),
-  met_var = c("MET_mod", "MET_vig", "MET_MVPA",
-              "num_days_mod_PA", "num_days_vig_PA"),
-  label   = c("Moderate", "Vigorous", "Total MVPA",
-              "Does moderate activity", "Does vigorous activity")
+  bin_var = c("MET_mod_bin", "MET_vig_bin", "MET_MVPA_bin"),
+  met_var = c("MET_mod", "MET_vig", "MET_MVPA"),
+  label   = c("Moderate", "Vigorous", "Total MVPA")
 )
 
 analyse_active_MET <- function(data, bin_var, met_var, label) {
@@ -636,7 +723,7 @@ analyse_active_MET <- function(data, bin_var, met_var, label) {
 plots <- purrr::pmap(
   exposures,
   ~ analyse_active_MET(
-      data   = cc_dat,
+      data   = IPAQ_dat,
       bin_var = ..1,
       met_var = ..2,
       label   = ..3
@@ -662,19 +749,19 @@ for (var in PA_vars) {
   extreme_var <- paste0(var, "_group")  # new variable name
 
   # 1️⃣ Compute 95th percentile among active participants only
-  p99 <- quantile(cc_dat[[var]][cc_dat[[var]] > 0], 0.99, na.rm = TRUE)
+  p99 <- quantile(IPAQ_dat[[var]][IPAQ_dat[[var]] > 0], 0.99, na.rm = TRUE)
 
   # 2️⃣ Create three-group factor: 0, active majority, very high
-  cc_dat[[extreme_var]] <- case_when(
-    cc_dat[[var]] == 0 ~ "0 activity",
-    cc_dat[[var]] > 0 & cc_dat[[var]] <= p99 ~ "Active (majority)",
-    cc_dat[[var]] > p99 ~ "Very high",
+  IPAQ_dat[[extreme_var]] <- case_when(
+    IPAQ_dat[[var]] == 0 ~ "0 activity",
+    IPAQ_dat[[var]] > 0 & IPAQ_dat[[var]] <= p99 ~ "Active (majority)",
+    IPAQ_dat[[var]] > p99 ~ "Very high",
     TRUE ~ NA_character_  # preserve NA
   )
 
   # 3️⃣ Convert to factor with logical order
-  cc_dat[[extreme_var]] <- factor(
-    cc_dat[[extreme_var]],
+  IPAQ_dat[[extreme_var]] <- factor(
+    IPAQ_dat[[extreme_var]],
     levels = c("0 activity", "Active (majority)", "Very high")
   )
 }
@@ -683,7 +770,7 @@ for (var in PA_vars) {
 PA_group_summary <- lapply(PA_vars, function(var) {
   group_var <- paste0(var, "_group")
 
-  cc_dat %>%
+  IPAQ_dat %>%
     group_by(.data[[group_var]]) %>%
     summarise(
       N = n(),
@@ -701,7 +788,7 @@ PA_group_summary <- lapply(PA_vars, function(var) {
 for (var in PA_vars) {
   group_var <- paste0(var, "_group")
 
-  p <- ggplot(cc_dat, aes(x = .data[[group_var]], y = as.numeric(SRF == "Yes"))) +
+  p <- ggplot(IPAQ_dat, aes(x = .data[[group_var]], y = as.numeric(SRF == "Yes"))) +
     geom_bar(stat = "summary", fun = "mean", fill = "steelblue", alpha = 0.7) +
     ylab("Proportion with fracture") +
     xlab(paste0(var, " (minutes/week)")) +
@@ -719,14 +806,14 @@ for (var in PA_vars) {
 PA_group_vars <- c("MET_mod_group", "MET_vig_group",  "MET_MVPA_group")
 
 for (var in PA_group_vars) {
-  cc_dat[[var]] <- factor(
-    cc_dat[[var]],
+  IPAQ_dat[[var]] <- factor(
+    IPAQ_dat[[var]],
     levels = c("0 activity", "Active (majority)", "Very high")
   )
 }
 
 PA_group_summary_age <- lapply(PA_group_vars, function(var) {
-  cc_dat %>%
+  IPAQ_dat %>%
     group_by(agegp_A0, .data[[var]]) %>%
     summarise(
       N = n(),
@@ -741,7 +828,7 @@ PA_group_summary_age <- lapply(PA_group_vars, function(var) {
   arrange(PA_variable, agegp_A0, Bin)
 
 for (var in PA_group_vars) {
-  p <- ggplot(cc_dat, aes(x = .data[[var]], y = as.numeric(SRF == "Yes"))) +
+  p <- ggplot(IPAQ_dat, aes(x = .data[[var]], y = as.numeric(SRF == "Yes"))) +
     geom_bar(stat = "summary", fun = "mean", fill = "steelblue", alpha = 0.7) +
     facet_wrap(~agegp_A0) +                     # stratify by age
     ylab("Proportion with fracture") +
@@ -759,7 +846,7 @@ for (var in PA_group_vars) {
  
 ```{r}
 PA_group_summary_age_sex <- lapply(PA_group_vars, function(var) {
-  cc_dat %>%
+  IPAQ_dat %>%
     group_by(agegp_A0, sex, .data[[var]]) %>%       # stratify by age AND sex
     summarise(
       N = n(),
@@ -774,7 +861,7 @@ PA_group_summary_age_sex <- lapply(PA_group_vars, function(var) {
   arrange(PA_variable, agegp_A0, sex, Bin)
 
 for (var in PA_group_vars) {
-  p <- ggplot(cc_dat, aes(x = .data[[var]], y = as.numeric(SRF == "Yes"))) +
+  p <- ggplot(IPAQ_dat, aes(x = .data[[var]], y = as.numeric(SRF == "Yes"))) +
     geom_bar(stat = "summary", fun = "mean", fill = "steelblue", alpha = 0.7) +
     facet_grid(sex ~ agegp_A0) +                 # stratify by sex (rows) and age (columns)
     ylab("Proportion with fracture") +
@@ -790,7 +877,7 @@ for (var in PA_group_vars) {
 ### Descriptive
 ```{r}
 PA_group_descriptives <- lapply(PA_group_vars, function(var) {
-  cc_dat %>%
+  IPAQ_dat %>%
     group_by(agegp_A0, sex, .data[[var]]) %>%
     summarise(
       N = n(),
@@ -808,7 +895,7 @@ PA_group_descriptives <- lapply(PA_group_vars, function(var) {
 
 save_table_word(
   df = PA_group_descriptives,
-  table_number = "Table 3.5",
+  table_number = "Table 3.6",
   folder_path = TABLES_DIR,
   title = "Participant demographics and fracture distribution by PA groups, age, and sex"
 )
@@ -819,8 +906,15 @@ save_table_word(
 #save rsf for analysis
 saveRDS(
   cc_dat,
-  file.path(DATA_DERIVED, "cc_dat.rds")
+  file.path(DATA_DERIVED, "cc_dat_described.rds")
 )
+
+#save rsf for analysis
+saveRDS(
+  IPAQ_dat,
+  file.path(DATA_DERIVED, "IPAQ_dat_described.rds")
+)
+
 ```
 
 ```{r}
