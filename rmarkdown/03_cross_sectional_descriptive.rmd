@@ -44,25 +44,20 @@ cc_dat <- cc_dat %>%
     duration_walk,
     num_day_walk,
     IPAQ,
-    MET_mod = cc_MET_mod, 
     mins_wk_mod = cc_mins_wk_mod,
+    mins_wk_vig =  cc_mins_wk_vig,
+     mins_wk_walk = cc_mins_wk_walk,
+    mins_wk_MVPA = cc_mins_wk_MVPA,
+    MET_mod = cc_MET_mod, 
     MET_vig = cc_MET_vig,
-   mins_wk_vig =  cc_mins_wk_vig,
-   MET_MVPA = cc_MET_MVPA,
-   mins_wk_MVPA = cc_mins_wk_MVPA,
     MET_walk = cc_MET_walk,
-    mins_wk_walk = cc_mins_wk_walk,
-    MET_summed = cc_MET_summed,
-    mins_wk_summed = cc_mins_wk_summed,
-    MET_mod_derived = MET_mod,
-    MET_vig_derived = MET_vig,
-    MET_walk_derived = MET_walk,
-    MVPA_derived = MVPA,
-    summed_MET_all = cc_MET_summed,
-   mins_wk_summed = cc_mins_wk_summed,
+    MET_MVPA = cc_MET_MVPA,
    MET_mod_bin = cc_MET_mod_bin,
    MET_vig_bin = cc_MET_vig_bin,
    MET_MVPA_bin = cc_MET_MVPA_bin,
+   num_day_mod_bin,
+   num_day_vig_bin,
+   num_day_walk_bin,
    WHO_MVPA,
    WHO_walk,
     date_assess_A0,
@@ -190,15 +185,6 @@ We are using only participants with all of duration and number of days/wk of act
 
 The full IPAQ calculates total physical activity as a combination of both leisure time PA (LTPA) as well as domains of work and normal activity - as such the resulting median MET-minutes is higher than for participation in LTPA alone. The general public health recommendations of 30 mins of MVPA are relatively low with most adults being able to achieve this regardless of leisure time activity. To look at the health benefits of LTPA higher cut point thresholds are needed for UKB IPAQ data.
 
-#### Summed days activity per week 
-
-Sum of days performing walking, moderate and vigorous activity - question derived from answers to number of days doing each of the following in a week so total of all will add up to more than 7 but cant be over 21.
-
-- Summed MET minutes per week for all activity 
-
-As with the above this is the total amount of time in minutes spent walking, doing vigorous and doing moderate PA. Unlike summed days this should not exceed the total number of minutes in a week
-
-
 
 ```{r}
 hist(cc_dat$MET_mod, 
@@ -229,16 +215,6 @@ hist(cc_dat$MET_walk,
 
 ```
 
-```{r}
-
-hist(cc_dat$summed_MET_all, 
-     main = "Histogram of summed MET mins/week for all activity", 
-     xlab = "MET mins/week of all activity", 
-     ylab = "Frequency", 
-     col = "lightblue", 
-     border = "black")
-
-```
 #### As binary measures
 
 ```{r}
@@ -260,12 +236,30 @@ cc_dat %>%
     percent = 100 * n / sum(n)
   )
 
+cc_dat %>%
+  count(num_day_mod_bin) %>%
+  mutate(
+    percent = 100 * n / sum(n)
+  )
+
+cc_dat %>%
+  count(num_day_vig_bin) %>%
+  mutate(
+    percent = 100 * n / sum(n)
+  )
+
+cc_dat %>%
+  count(num_day_walk_bin) %>%
+  mutate(
+    percent = 100 * n / sum(n)
+  )
+
 ```
 
 ```{r}
 
 cc_dat %>%
-  select(MET_mod_bin, MET_vig_bin, MET_MVPA_bin) %>%
+  select(MET_mod_bin, MET_vig_bin, MET_MVPA_bin, num_day_mod_bin, num_day_vig_bin, num_day_walk_bin) %>%
   pivot_longer(everything(),
                names_to = "measure",
                values_to = "value") %>%
@@ -282,7 +276,7 @@ cc_dat %>%
 
 
 ```{r}
-vars <- c("MET_mod", "MET_vig", "MET_MVPA","MET_walk", "summed_MET_all")
+vars <- c("MET_mod", "MET_vig", "MET_MVPA","MET_walk")
 
 PA_summary_sex <- cc_dat %>%
   group_by(sex) %>%
@@ -342,6 +336,7 @@ save_table_word(
 #### International Physical Activity Questionnaire (IPAQ) 
 Based on activity frequency, duration and intensity an activity group is derived as being low, moderate or high active.
 
+# While this is a complete case dataset there are still NA in IPAQ as it is derived downstream of where we ran exclusions. It has a considerably higher degree of missingness
 
 ```{r }
 ggplot(cc_dat, aes(x = IPAQ)) +
@@ -349,6 +344,17 @@ ggplot(cc_dat, aes(x = IPAQ)) +
   labs(
     title = "Derived IPAQ activity group",
     x = "IPAQ group",
+    y = "Count"
+  ) +
+  theme_minimal() 
+
+```
+```{r }
+ggplot(cc_dat, aes(x = num_day_mod_bin)) +
+  geom_bar(fill = "lightblue", color = "black") +
+  labs(
+    title = "Undertakes mod activity",
+    x = "Yes/No",
     y = "Count"
   ) +
   theme_minimal() 
@@ -383,7 +389,7 @@ ggplot(cc_dat, aes(x = WHO_walk)) +
 ### Physical activity status by outcome
 
 ```{r}
-PA_vars <- c("MET_mod", "MET_vig", "MET_MVPA", "summed_MET_all")
+PA_vars <- c("MET_mod", "MET_vig", "MET_MVPA")
 
 cc_dat <- cc_dat %>%
   mutate(
@@ -478,11 +484,11 @@ save_table_word(
   title = "Fracture distribution by WHO binary PA exposures"
 )
 ```
-####Other binary
 
-who binary exposure
+####Other binary
+ binary exposure
 ```{r}
-binary_exposures <- c("MET_mod_bin", "MET_vig_bin", "MET_MVPA_bin")
+binary_exposures <- c("MET_mod_bin", "MET_vig_bin", "MET_MVPA_bin", "num_day_mod_bin", "num_day_vig_bin", "num_day_walk_bin")
 
 PA_summary_binary <- lapply(binary_exposures, function(var) {
   cc_dat %>%
@@ -568,7 +574,7 @@ log_transform_plot <- function(data, vars, add_one = TRUE, bins = 50) {
 
 ```{r}
 
-result <- log_transform_plot(cc_dat, vars = c("MET_mod", "MET_vig", "MET_MVPA", "MET_walk", "summed_MET_all"))
+result <- log_transform_plot(cc_dat, vars = c("MET_mod", "MET_vig", "MET_MVPA", "MET_walk"))
 
 # Access the transformed data
 cc_dat_transformed <- result$data
@@ -578,7 +584,7 @@ result$plots$log_MET_mod
 result$plots$log_MET_vig
 result$plots$log_MET_MVPA
 result$plots$log_MET_walk
-result$plots$log_summed_MET_all
+
 
 cc_dat <- result$data
 
@@ -588,9 +594,12 @@ cc_dat <- result$data
 
 ```{r}
 exposures <- tibble::tibble(
-  bin_var = c("MET_mod_bin", "MET_vig_bin", "MET_MVPA_bin"),
-  met_var = c("MET_mod",     "MET_vig",     "MET_MVPA"),
-  label   = c("Moderate",    "Vigorous",    "Total MVPA")
+  bin_var = c("MET_mod_bin", "MET_vig_bin", "MET_MVPA_bin",
+              "num_day_mod_bin", "num_day_vig_bin"),
+  met_var = c("MET_mod", "MET_vig", "MET_MVPA",
+              "num_days_mod_PA", "num_days_vig_PA"),
+  label   = c("Moderate", "Vigorous", "Total MVPA",
+              "Does moderate activity", "Does vigorous activity")
 )
 
 analyse_active_MET <- function(data, bin_var, met_var, label) {

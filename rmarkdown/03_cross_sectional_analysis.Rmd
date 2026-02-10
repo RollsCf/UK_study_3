@@ -26,7 +26,7 @@ list.files(here())
 Load dataset: This has already had exclusions applied to it, it is a complete case dataset
 
 ```{r}
-cc_dat  <- readRDS(file.path(DATA_DERIVED, "cc_dat.Rds"))
+cc_dat  <- readRDS(file.path(DATA_DERIVED, "complete_case_dat.Rds"))
 
 ```
 

@@ -85,3 +85,77 @@ exp(coef(model))
 #   Linearity with log-odds (already handled — binary predictor always has a linear effect on log-odds)
 # Transforming the exposure (0/1 can’t be logged)
 # Extreme values (binary variables are clean)
+
+
+#### Removed from 03_cross_sectional_analysus
+### Archive analysis with grouping that didnt account for zeros
+````{r}
+
+create_quintile_bins <- function(data, vars) {
+  binned_data <- data
+  
+  for (var in vars) {
+    bin_var <- paste0(var, "_q")  # _q for quintile
+    
+    # 1️⃣ Calculate breaks and make unique
+    breaks <- unique(quantile(binned_data[[var]], probs = seq(0, 1, 0.2), na.rm = TRUE))
+    
+    # 2️⃣ Only cut if there is more than one unique break
+    if (length(breaks) > 1) {
+      binned_data[[bin_var]] <- cut(
+        binned_data[[var]],
+        breaks = breaks,
+        include.lowest = TRUE,
+        labels = paste0("Q", seq_len(length(breaks) - 1))
+      )
+    } else {
+      # If all values are the same, put in single bin
+      binned_data[[bin_var]] <- factor("Q1", levels = "Q1")
+    }
+  }
+  
+  return(binned_data)
+}
+
+PA_vars <- c("MET_mod", "MET_vig", "MET_walk", "MET_MVPA", "summed_MET_all")
+
+cc_dat <- create_quintile_bins(cc_dat, PA_vars)
+
+# Check new columns
+head(cc_dat[, c(PA_vars, paste0(PA_vars, "_q"))])
+
+
+
+PA_quintile_summary <- lapply(PA_vars, function(var) {
+  bin_var <- paste0(var, "_q")
+  cc_dat %>%
+    group_by(.data[[bin_var]]) %>%
+    summarise(
+      N = n(),
+      Fractures = sum(SRF == "Yes", na.rm = TRUE),
+      `Fracture %` = round(100 * mean(SRF == "Yes", na.rm = TRUE), 2)
+    ) %>%
+    mutate(PA_variable = var) %>%
+    rename(Bin = .data[[bin_var]])
+}) %>%
+  bind_rows() %>%
+  select(PA_variable, Bin, N, Fractures, `Fracture %`) %>%
+  arrange(PA_variable, Bin)
+
+
+for (var in PA_vars) {
+  bin_var <- paste0(var, "_q")
+  
+  p <- ggplot(cc_dat, aes(x = .data[[bin_var]], y = as.numeric(SRF == "Yes"))) +
+    geom_bar(stat = "summary", fun = "mean", fill = "steelblue", alpha = 0.7) +
+    ylab("Proportion with fracture") +
+    xlab(paste0(var, " (quintiles)")) +
+    ggtitle(paste0("Fracture proportion by ", var, " quintiles")) +
+    theme_minimal() +
+    ylim(0, 1)
+  
+  print(p)
+}
+
+
+````

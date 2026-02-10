@@ -31,13 +31,14 @@ analysis_dat <-analysis_dat %>%
     cc_mins_wk_MVPA,
     cc_MET_walk,
     cc_mins_wk_walk,
-    cc_MET_summed,
-    cc_mins_wk_summed,
     WHO_MVPA = WHO_MVPA_raw,
     WHO_walk = WHO_walk_raw,
     cc_MET_mod_bin,
     cc_MET_vig_bin,
     cc_MET_MVPA_bin,
+    num_day_mod_bin = num_days_mod_clean_bin,
+    num_day_vig_bin = num_days_vig_clean_bin,
+    num_day_walk_bin = num_day_walk_clean_bin,
     date_assess_A0 = date_assess_A0_raw,
     assessment_country,
     age_A0 = age_A0_raw,
@@ -81,7 +82,7 @@ middle_aged_dat <- middle_aged_dat %>%
 # Stratified by sex
 
 table1::table1(
-  ~ age_A0 + ethnicity + tdi + qualification + weight + height + WC + BMI + SRF + Wrist + Hip + IPAQ + WHO_MVPA + WHO_walk |sex, 
+  ~ age_A0 + ethnicity + tdi + qualification + weight + height + WC + BMI + SRF + Wrist + Hip + num_day_mod_bin + num_day_vig_bin + num_day_walk_bin  + WHO_MVPA + WHO_walk |sex, 
   data = middle_aged_dat,
   overall = "Total",
 )
@@ -94,8 +95,34 @@ table1::table1(
 
 
 
-vars <-c("ethnicity", "SRF", "num_days_mod_PA", "num_days_vig_PA", "num_day_walk",
-         "IPAQ", "WHO_MVPA", "WHO_walk", "qualification", "tdi", "WC", "weight", "height", "BMI")
+vars <-c("ethnicity", 
+         "SRF", 
+         "cc_MET_mod", 
+         "cc_mins_wk_mod",
+         "cc_MET_vig",
+         "cc_mins_wk_vig",
+         "cc_MET_MVPA",
+         "cc_mins_wk_MVPA",
+         "cc_MET_walk",
+         "cc_mins_wk_walk",
+         "cc_MET_mod_bin",
+         "cc_MET_vig_bin",
+         "cc_MET_MVPA_bin",
+         "duration_mod_PA", 
+         "num_days_mod_PA", 
+         "duration_vig_PA", 
+         "num_days_vig_PA",
+         "duration_walk",
+         "num_day_walk", 
+         "IPAQ", 
+         "WHO_MVPA", 
+         "WHO_walk", 
+         "qualification", 
+         "tdi",
+         "WC", 
+         "weight", 
+         "height", 
+         "BMI")
 
 response_rate <- function(df, var) {
   df %>%
@@ -123,7 +150,7 @@ save_table_word(
   title = "Response rate and degree of missing data on activity type and days per week walking"
 )
 
-## Create a complete case analysis data set
+## Create a complete case analysis data set for primary analysis
 ## Exclusions 
 
 # Before working with the data, we usually exclude some participants.
@@ -154,19 +181,20 @@ tab_exc <- rbind(
   )
 )
 
-# ---- Missing PA (IPAQ) data ----
+# ---- Missing PA  data ----
 nb <- nrow(middle_aged_dat)
 
 middle_aged_dat <- middle_aged_dat[
-  !is.na(middle_aged_dat$cc_MET_mod) &
-    !is.na(middle_aged_dat$cc_MET_vig) &
-    !is.na(middle_aged_dat$cc_MET_walk),
+  !is.na(middle_aged_dat$num_days_mod_PA) &
+    !is.na(middle_aged_dat$num_days_vig_PA) &
+   !is.na(middle_aged_dat$num_day_walk),
+  
 ]
 
 tab_exc <- rbind(
   tab_exc,
   data.frame(
-    Exclusion = "Missing MET data",
+    Exclusion = "Missing activity data",
     Number_excluded = nb - nrow(middle_aged_dat),
     Number_remaining = nrow(middle_aged_dat)
   )

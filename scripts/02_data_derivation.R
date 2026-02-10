@@ -256,7 +256,7 @@ dat_clean <- dat_clean %>%
   )
 
 # Binary indicators (any activity/METs)
-binary_vars <- c("cc_mins_wk_mod", "cc_mins_wk_vig", "cc_mins_wk_walk",
+binary_vars <- c("num_days_mod_clean", "num_days_vig_clean", "num_day_walk_clean",
                  "cc_MET_mod", "cc_MET_vig", "cc_MET_MVPA")
 
 dat_clean <- dat_clean %>%
