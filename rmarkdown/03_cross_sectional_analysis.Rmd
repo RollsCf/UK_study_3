@@ -42,11 +42,19 @@ cc_dat <- cc_dat %>%
     Wrist,
     Hip,
     IPAQ,
-    MET_mod = log_MET_mod, 
-    MET_vig = log_MET_vig,
-    MET_MVPA = log_MET_MVPA,
-    MET_walk = log_MET_walk,
-    summed_MET_all = log_summed_MET_all,
+    MET_mod,
+    MET_vig,
+    MET_MVPA,
+    MET_walk,
+    MET_summed,
+    log_MET_mod, 
+    log_MET_vig,
+    log_MET_MVPA,
+   log_MET_walk,
+     log_summed_MET_all,
+   MET_mod_bin,
+   MET_vig_bin,
+   MET_MVPA_bin,
     date_assess_A0,
     assessment_country,
     age_A0,
@@ -63,54 +71,111 @@ cc_dat <- cc_dat %>%
   )
 ```
 
-### Univariate regression with log of PA variable and overall fracture
+### Univariate regression with binary PA variable and overall fracture
+
+
 ```{r}
-# Convert character to factor
-cc_dat <- cc_dat %>%
-  mutate(SRF = factor(SRF, levels = c("No", "Yes")))
+# helper function for table
+run_PA_bin_summary <- function(data, PA_bin_vars, fracture_var) {
 
+  data <- data %>%
+    mutate(across(all_of(PA_bin_vars), as.numeric))
 
-glm(cc_dat$SRF ~ cc_dat$MET_mod, family = binomial)
-glm(cc_dat$SRF ~ cc_dat$MET_vig, family = binomial) 
-glm(cc_dat$SRF ~ cc_dat$MET_walk, family = binomial) 
-glm(cc_dat$SRF ~ cc_dat$MET_MVPA, family = binomial) 
-glm(cc_dat$SRF ~ cc_dat$summed_MET_all, family = binomial) 
-
-PA_vars <- c("MET_mod", "MET_vig", "MET_walk", "MET_MVPA", "summed_MET_all")
-
-models <- list()
-
-for (var in PA_vars) {
-  fmla <- reformulate(var, response = "SRF")  # creates SRF ~ var
-  models[[var]] <- glm(fmla, data = cc_dat, family = binomial)
+  lapply(PA_bin_vars, function(var) {
+    data %>%
+      group_by(.data[[var]]) %>%
+      summarise(
+        N = n(),
+        Fractures = sum(.data[[fracture_var]] == "Yes", na.rm = TRUE),
+        `Fracture %` = round(
+          100 * mean(.data[[fracture_var]] == "Yes", na.rm = TRUE), 2
+        ),
+        .groups = "drop"
+      ) %>%
+      mutate(
+        PA_variable = var,
+        PA_group = ifelse(.data[[var]] == 1, "Active", "Inactive")
+      ) %>%
+      select(PA_variable, PA_group, N, Fractures, `Fracture %`)
+  }) %>%
+    bind_rows()
 }
 
+PA_bin_vars <- c("MET_mod_bin", "MET_vig_bin", "MET_MVPA_bin")
 
-univariable_OR_table <- lapply(models, function(mod) {
-  tidy(mod, conf.int = TRUE, exponentiate = TRUE) %>%  # exponentiate = TRUE gives OR
-    filter(term != "(Intercept)") %>%                   # keep only the PA variable
-    select(term, estimate, conf.low, conf.high, p.value)
+fracture_types <- c("SRF", "Hip", "Wrist")
+
+PA_bin_summary_all <- lapply(fracture_types, function(fx) {
+  run_PA_bin_summary(cc_dat, PA_bin_vars, fx) %>%
+    mutate(Fracture_type = fx)
 }) %>%
-  bind_rows(.id = "Variable") %>%
-  rename(
-    OR = estimate,
-    `95% CI lower` = conf.low,
-    `95% CI upper` = conf.high,
-    `p-value` = p.value
-  )
-
-univariable_OR_table
+  bind_rows()
 
 save_table_word(
-  df = univariable_OR_table,  # your data frame
-  table_number = "Table 3.3",  # can be numeric or string
-  folder_path = TABLES_DIR,       # uses setup-defined folder
-  title = "Univariable OR table"
+  df = PA_bin_summary_all,
+  table_number = "Table 3.6",
+  folder_path = TABLES_DIR,
+  title = "Participant counts and fracture % by binary PA group and fracture type"
 )
+
 
 ```
 
-As above but transformed to z-score to standardise
+```{r}
+# Helper function for univariable regression
+
+run_PA_bin_univariable_OR <- function(data, PA_bin_vars, fracture_var) {
+
+  data <- data %>%
+    mutate(
+      across(all_of(PA_bin_vars), ~ factor(.x, levels = c(0, 1))),
+      !!fracture_var := factor(.data[[fracture_var]], levels = c("No", "Yes"))
+    )
+
+  models <- lapply(PA_bin_vars, function(var) {
+    glm(
+      reformulate(var, response = fracture_var),
+      data = data,
+      family = binomial
+    )
+  })
+  names(models) <- PA_bin_vars
+
+  lapply(models, function(mod) {
+    tidy(mod, conf.int = TRUE, exponentiate = TRUE) %>%
+      filter(term != "(Intercept)") %>%
+      select(term, estimate, conf.low, conf.high, p.value) %>%
+      mutate(PA_group = "Active")
+  }) %>%
+    bind_rows(.id = "PA_variable") %>%
+    rename(
+      OR = estimate,
+      `95% CI lower` = conf.low,
+      `95% CI upper` = conf.high,
+      `p-value` = p.value
+    )
+}
+
+univariable_OR_all <- lapply(fracture_types, function(fx) {
+  run_PA_bin_univariable_OR(cc_dat, PA_bin_vars, fx) %>%
+    mutate(Fracture_type = fx)
+}) %>%
+  bind_rows()
+```
+
+```{r}
+for (fx in fracture_types) {
+
+  save_table_word(
+    df = filter(univariable_OR_all, Fracture_type == fx),
+    table_number = paste0("Table 3.", fx),
+    folder_path = TABLES_DIR,
+    title = paste("Univariable ORs for PA exposures and", fx)
+  )
+}
+```
+
+##### Log transformed and convert to z-score to standardise
 
 ```{r}
 PA_vars <- c("MET_mod", "MET_vig", "MET_walk", "MET_MVPA", "summed_MET_all")

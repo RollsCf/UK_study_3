@@ -203,7 +203,8 @@ dat_clean <- dat_clean %>%
 # For the complete case analysis we will create our own variables of mins/wk and METmins/wk with just complete data
 # When someone responded as 0 to number of days of activity they wont have been prompted on duration - we will impute 0 not NA for these
 
-# Participants reporting zero days of moderate activity were assigned zero minutes per week, recognising that duration was not collected in these cases. Complete case variables were defined accordingly.
+# Participants reporting zero days of moderate activity were assigned zero minutes per week, recognising that duration was not collected in these cases. 
+# Complete case variables were defined accordingly.
 
 # Complete case mins/wk mod activity (cc_mins_wk_mod)
 
@@ -257,7 +258,9 @@ dat_clean <- dat_clean %>%
     ## Total summed activity (minutes & METs)
     cc_mins_wk_summed = sum_na0(cc_mins_wk_walk, cc_mins_wk_mod, cc_mins_wk_vig),
     cc_MET_summed     = sum_na0(cc_MET_walk, cc_MET_MVPA),
-    
+ 
+    # Variables below are those presented in UKB but have some imputed values so not same as cc
+       
     ## Self-reported MET variables (numeric)
     MET_mod_clean_num  = as_numeric_safe(MET_mod_clean),
     MET_vig_clean_num  = as_numeric_safe(MET_vig_clean),
