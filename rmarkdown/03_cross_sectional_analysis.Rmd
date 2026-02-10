@@ -147,8 +147,12 @@ run_PA_bin_OR <- function(data, PA_bin_vars, fracture_var, confounders = NULL) {
       `95% CI lower` = conf.low,
       `95% CI upper` = conf.high,
       `p-value` = p.value
+    ) %>%
+    mutate(
+      across(c(OR, `95% CI lower`, `95% CI upper`, `p-value`), ~ round(., 3))
     )
 }
+    
 
 test <- run_PA_bin_OR(
   data = cc_dat2,
@@ -237,6 +241,14 @@ OR_all <- bind_rows(
 ```
 
 ```{r}
+
+save_table_word(
+  df = OR_all,  # the full table with all fractures and sexes
+  table_number = "Table 3.9",
+  folder_path = TABLES_DIR,
+  title = "Adjusted Odds ratios for PA by fracture type sex combined"
+)
+
 for (fx in fracture_types) {
 
   save_table_word(
@@ -391,6 +403,8 @@ save_table_word(
 
 ```
 Sensitivity analysis and assumptions
+Need to add interaction terms
+
 
 
 #### To get a clearer idea of dose reponse we will use the data filetered on having complete IPAQ data in order to use dose responses
