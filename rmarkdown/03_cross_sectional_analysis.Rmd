@@ -21,19 +21,19 @@ list.files(here())
 ```
 
 
-
-
 Load dataset: This has already had exclusions applied to it, it is a complete case dataset
 
 ```{r}
-cc_dat  <- readRDS(file.path(DATA_DERIVED, "complete_case_dat.Rds"))
+cc_dat2  <- readRDS(file.path(DATA_DERIVED, "cc_dat_described.Rds"))
+
+IPAQ_dat2  <- readRDS(file.path(DATA_DERIVED, "IPAQ_dat_described.Rds"))
 
 ```
 
 Data set of complete case participants for analysis
 ```{r}
 # Select variables for cross sectional analysis
-cc_dat <- cc_dat %>%
+cc_dat2 <- cc_dat2 %>%
   select (
     eid,
     age_education,
@@ -41,20 +41,9 @@ cc_dat <- cc_dat %>%
     SRF,
     Wrist,
     Hip,
-    IPAQ,
-    MET_mod,
-    MET_vig,
-    MET_MVPA,
-    MET_walk,
-    MET_summed,
-    log_MET_mod, 
-    log_MET_vig,
-    log_MET_MVPA,
-   log_MET_walk,
-     log_summed_MET_all,
-   MET_mod_bin,
-   MET_vig_bin,
-   MET_MVPA_bin,
+   num_day_mod_bin,
+   num_day_vig_bin,
+   num_day_walk_bin,
     date_assess_A0,
     assessment_country,
     age_A0,
@@ -73,6 +62,7 @@ cc_dat <- cc_dat %>%
 
 ### Univariate regression with binary PA variable and overall fracture
 
+### MVPA isnt a true summation of mod and vig as people with missing data became NA which was about 25%
 
 ```{r}
 # helper function for table
@@ -101,7 +91,383 @@ run_PA_bin_summary <- function(data, PA_bin_vars, fracture_var) {
     bind_rows()
 }
 
-PA_bin_vars <- c("MET_mod_bin", "MET_vig_bin", "MET_MVPA_bin")
+PA_bin_vars <- c( "num_day_mod_bin", "num_day_vig_bin", "num_day_walk_bin")
+
+fracture_types <- c("SRF", "Hip", "Wrist")
+
+PA_bin_summary_all <- lapply(fracture_types, function(fx) {
+  run_PA_bin_summary(cc_dat2, PA_bin_vars, fx) %>%
+    mutate(Fracture_type = fx)
+}) %>%
+  bind_rows()
+
+save_table_word(
+  df = PA_bin_summary_all,
+  table_number = "Table 3.7",
+  folder_path = TABLES_DIR,
+  title = "Participant counts and fracture % by binary PA group and fracture type"
+)
+
+
+```
+
+```{r}
+# Helper function for univariable regression
+
+run_PA_bin_OR <- function(data, PA_bin_vars, fracture_var, confounders = NULL) {
+
+  data <- data %>%
+    mutate(
+      across(all_of(PA_bin_vars), ~ factor(.x, levels = c(0, 1))),
+      !!fracture_var := factor(.data[[fracture_var]], levels = c("No", "Yes"))
+    )
+
+  models <- lapply(PA_bin_vars, function(var) {
+
+    rhs <- c(var, confounders)
+    formula <- reformulate(rhs, response = fracture_var)
+
+    glm(
+      formula,
+      data = data,
+      family = binomial
+    )
+  })
+
+  names(models) <- PA_bin_vars
+
+  lapply(models, function(mod) {
+    tidy(mod, conf.int = TRUE, exponentiate = TRUE) %>%
+      filter(term %in% paste0(PA_bin_vars, "1")) %>%
+      select(term, estimate, conf.low, conf.high, p.value)
+  }) %>%
+    bind_rows(.id = "PA_variable") %>%
+    rename(
+      OR = estimate,
+      `95% CI lower` = conf.low,
+      `95% CI upper` = conf.high,
+      `p-value` = p.value
+    )
+}
+
+test <- run_PA_bin_OR(
+  data = cc_dat2,
+  PA_bin_vars = PA_bin_vars,
+  fracture_var = fracture_types[1]
+)
+
+nrow(test)
+test
+
+```
+
+Unadjusted model 
+```{r}
+unadj_OR_all <- lapply(fracture_types, function(fx) {
+  run_PA_bin_OR(cc_dat2, PA_bin_vars, fx) %>%
+    mutate(
+      Fracture_type = fx,
+      Model = "Unadjusted"
+    )
+}) %>%
+  bind_rows()
+
+```
+
+model 2: adjusted for age and sex
+```{r}
+model2_OR_all <- lapply(fracture_types, function(fx) {
+  run_PA_bin_OR(
+    cc_dat2,
+    PA_bin_vars,
+    fx,
+    confounders = c("age_A0", "sex")
+  ) %>%
+    mutate(
+      Fracture_type = fx,
+      Model = "Age + sex–adjusted"
+    )
+}) %>%
+  bind_rows()
+```
+
+model 3: adjusted for age, sex, ethnicity
+```{r}
+model3_OR_all <- lapply(fracture_types, function(fx) {
+  run_PA_bin_OR(
+    cc_dat2,
+    PA_bin_vars,
+    fx,
+    confounders = c("age_A0", "sex", "ethnicity")
+  ) %>%
+    mutate(
+      Fracture_type = fx,
+      Model = "Age + sex + ethnicity adjusted"
+    )
+}) %>%
+  bind_rows()
+```
+
+model 4; age,sex, ethnicity, deprivation
+```{r}
+model4_OR_all <- lapply(fracture_types, function(fx) {
+  run_PA_bin_OR(
+    cc_dat2,
+    PA_bin_vars,
+    fx,
+    confounders = c("age_A0", "sex", "ethnicity", "tdi", "qualification")
+  ) %>%
+    mutate(
+      Fracture_type = fx,
+      Model = "Age + sex + ethnicity + deprivation adjusted"
+    )
+}) %>%
+  bind_rows()
+```
+combine all results
+
+```{r}
+OR_all <- bind_rows(
+  unadj_OR_all, # unadjusted
+  model2_OR_all, # age and sex
+  model3_OR_all, # age, sex, ethnicity
+  model4_OR_all # age, sex, ethnicity, deprivation
+)
+
+```
+
+```{r}
+for (fx in fracture_types) {
+
+  save_table_word(
+    df = filter(OR_all, Fracture_type == fx),
+    table_number = paste0("Table 3.9.", fx),
+    folder_path = TABLES_DIR,
+    title = paste("Odds ratios for PA exposures and", fx)
+  )
+}
+
+```
+
+Stratify by sex and run full models
+
+```{r}
+#Hip
+# women only
+women_hip <-glm(Hip ~ num_day_mod_bin + age_A0 + ethnicity + tdi + qualification, data = filter(cc_dat2, sex == "Female"), family = binomial)
+
+# men only
+men_hip <- glm(Hip ~ num_day_mod_bin + age_A0 + ethnicity + tdi + qualification, data = filter(cc_dat2, sex == "Male"), family = binomial)
+
+#Wrist
+# women only
+women_wrist <- glm(Wrist ~ num_day_mod_bin + age_A0 + ethnicity + tdi + qualification, data = filter(cc_dat2, sex == "Female"), family = binomial)
+
+# men only
+men_wrist <-glm(Wrist ~ num_day_mod_bin + age_A0 + ethnicity + tdi + qualification, data = filter(cc_dat2, sex == "Male"), family = binomial)
+
+#SRF
+
+cc_dat2 <- cc_dat2 %>%
+  mutate(
+    SRF = factor(SRF, levels = c("No", "Yes"))
+  )
+
+# women only
+women_SRF <- glm(SRF ~ num_day_mod_bin + age_A0 + ethnicity + tdi + qualification, data = filter(cc_dat2, sex == "Female"), family = binomial)
+
+# men only
+men_SRF <- glm(SRF ~ num_day_mod_bin + age_A0 + ethnicity + tdi + qualification, data = filter(cc_dat2, sex == "Male"), family = binomial)
+
+# Combine into one table
+bind_rows(
+  tidy(women_hip, exponentiate = TRUE, conf.int = TRUE) %>% mutate(Sex = "Female"),
+  tidy(men_hip, exponentiate = TRUE, conf.int = TRUE) %>% mutate(Sex = "Male"),
+  tidy(women_wrist, exponentiate = TRUE, conf.int = TRUE) %>% mutate(Sex = "Female"),
+  tidy(men_wrist, exponentiate = TRUE, conf.int = TRUE) %>% mutate(Sex = "Male"),
+  tidy(women_SRF, exponentiate = TRUE, conf.int = TRUE) %>% mutate(Sex = "Female"),
+  tidy(men_SRF, exponentiate = TRUE, conf.int = TRUE) %>% mutate(Sex = "Male")
+) %>%
+  select(Sex, term, estimate, conf.low, conf.high, p.value) %>%
+  mutate(across(c(estimate, conf.low, conf.high, p.value), ~ round(., 3))) %>%
+  rename(
+    OR = estimate,
+    `95% CI lower` = conf.low,
+    `95% CI upper` = conf.high,
+    `p-value` = p.value
+  )
+
+```
+
+clean table of above
+```{r}
+PA_bin_vars <- c("num_day_mod_bin", "num_day_vig_bin", "num_day_walk_bin")
+fracture_types <- c("Hip", "Wrist", "SRF")
+
+tidy_sex_strat <- function(model, PA_vars, fracture_type, sex_label) {
+  
+  tidy_tbl <- broom::tidy(model, conf.int = TRUE, exponentiate = TRUE)
+  
+  # Filter only PA variables actually in the model
+  tidy_tbl <- tidy_tbl %>%
+    filter(term %in% PA_vars) %>%
+    select(term, estimate, conf.low, conf.high, p.value)
+  
+  # Round and add labels
+  tidy_tbl %>%
+    mutate(
+      OR = round(estimate, 3),
+      `95% CI lower` = round(conf.low, 3),
+      `95% CI upper` = round(conf.high, 3),
+      `p-value` = round(p.value, 3),
+      Fracture_type = fracture_type,
+      Sex = sex_label
+    ) %>%
+    select(Sex, Fracture_type, term, OR, `95% CI lower`, `95% CI upper`, `p-value`)
+}
+
+# Hip
+women_hip <- glm(Hip ~ num_day_mod_bin + num_day_vig_bin + num_day_walk_bin + 
+                 age_A0 + ethnicity + tdi + qualification, 
+                 data = filter(cc_dat2, sex == "Female"), family = binomial)
+
+men_hip <- glm(Hip ~ num_day_mod_bin + num_day_vig_bin + num_day_walk_bin + 
+               age_A0 + ethnicity + tdi + qualification, 
+               data = filter(cc_dat2, sex == "Male"), family = binomial)
+
+# Wrist
+women_wrist <- glm(Wrist ~ num_day_mod_bin + num_day_vig_bin + num_day_walk_bin + 
+                   age_A0 + ethnicity + tdi + qualification, 
+                   data = filter(cc_dat2, sex == "Female"), family = binomial)
+
+men_wrist <- glm(Wrist ~ num_day_mod_bin + num_day_vig_bin + num_day_walk_bin + 
+                 age_A0 + ethnicity + tdi + qualification, 
+                 data = filter(cc_dat2, sex == "Male"), family = binomial)
+
+# SRF
+cc_dat2 <- cc_dat2 %>%
+  mutate(SRF = factor(SRF, levels = c("No", "Yes")))
+
+women_SRF <- glm(SRF ~ num_day_mod_bin + num_day_vig_bin + num_day_walk_bin + 
+                 age_A0 + ethnicity + tdi + qualification, 
+                 data = filter(cc_dat2, sex == "Female"), family = binomial)
+
+men_SRF <- glm(SRF ~ num_day_mod_bin + num_day_vig_bin + num_day_walk_bin + 
+               age_A0 + ethnicity + tdi + qualification, 
+               data = filter(cc_dat2, sex == "Male"), family = binomial)
+
+women_hip_tbl  <- tidy_sex_strat(women_hip, PA_bin_vars, "Hip", "Female")
+men_hip_tbl    <- tidy_sex_strat(men_hip, PA_bin_vars, "Hip", "Male")
+
+women_wrist_tbl <- tidy_sex_strat(women_wrist, PA_bin_vars, "Wrist", "Female")
+men_wrist_tbl   <- tidy_sex_strat(men_wrist, PA_bin_vars, "Wrist", "Male")
+
+women_SRF_tbl  <- tidy_sex_strat(women_SRF, PA_bin_vars, "SRF", "Female")
+men_SRF_tbl    <- tidy_sex_strat(men_SRF, PA_bin_vars, "SRF", "Male")
+
+OR_sex_strat <- bind_rows(
+  women_hip_tbl, men_hip_tbl,
+  women_wrist_tbl, men_wrist_tbl,
+  women_SRF_tbl, men_SRF_tbl
+)
+
+OR_sex_strat <- OR_sex_strat %>%
+  mutate(PA_exposure = recode(term,
+                              num_day_mod_bin = "Does 1 or more days mod PA",
+                              num_day_vig_bin = "Does 1 or more days vig PA",
+                              num_day_walk_bin = "Walks on one or more days")) %>%
+  select(Sex, Fracture_type, PA_exposure, OR, `95% CI lower`, `95% CI upper`, `p-value`) %>%
+  arrange(Fracture_type, Sex, PA_exposure)
+
+View(OR_sex_strat)  # Opens in RStudio
+OR_sex_strat        # Prints to console
+
+save_table_word(
+  df = OR_sex_strat,  # the full table with all fractures and sexes
+  table_number = "Table 3.11",
+  folder_path = TABLES_DIR,
+  title = "Odds ratios for PA exposures by sex and fracture type"
+)
+
+```
+Sensitivity analysis and assumptions
+
+
+#### To get a clearer idea of dose reponse we will use the data filetered on having complete IPAQ data in order to use dose responses
+
+```{r}
+# Select variables for cross sectional dose response analysis
+IPAQ_dat2 <- IPAQ_dat2 %>%
+  select (
+    eid,
+    age_education,
+    ethnicity,
+    SRF,
+    Wrist,
+    Hip,
+    IPAQ,
+    MET_mod,
+    MET_vig,
+    MET_MVPA,
+    MET_walk,
+    log_MET_mod, 
+    log_MET_vig,
+    log_MET_MVPA,
+   log_MET_walk,
+   MET_mod_bin,
+   MET_vig_bin,
+   MET_MVPA_bin,
+   num_day_mod_bin,
+   num_day_vig_bin,
+   num_day_walk_bin,
+    date_assess_A0,
+    assessment_country,
+    age_A0,
+    agegp_A0,
+    sex,
+    qualification,
+    tdi,
+    WC,
+    weight,
+    height,
+    BMI,
+    BMI_category,
+    approx_dob_derived,
+  )
+```
+
+### Univariate regression with binary PA variable and overall fracture
+
+### MVPA isnt a true summation of mod and vig as people with missing data became NA which was about 25%
+
+```{r}
+# helper function for table
+run_PA_bin_summary <- function(data, PA_bin_vars, fracture_var) {
+
+  data <- data %>%
+    mutate(across(all_of(PA_bin_vars), as.numeric))
+
+  lapply(PA_bin_vars, function(var) {
+    data %>%
+      group_by(.data[[var]]) %>%
+      summarise(
+        N = n(),
+        Fractures = sum(.data[[fracture_var]] == "Yes", na.rm = TRUE),
+        `Fracture %` = round(
+          100 * mean(.data[[fracture_var]] == "Yes", na.rm = TRUE), 2
+        ),
+        .groups = "drop"
+      ) %>%
+      mutate(
+        PA_variable = var,
+        PA_group = ifelse(.data[[var]] == 1, "Active", "Inactive")
+      ) %>%
+      select(PA_variable, PA_group, N, Fractures, `Fracture %`)
+  }) %>%
+    bind_rows()
+}
+
+PA_bin_vars <- c("MET_mod_bin", "MET_vig_bin", "MET_MVPA_bin", "num_day_mod_bin", "num_day_vig_bin", "num_day_walk_bin")
 
 fracture_types <- c("SRF", "Hip", "Wrist")
 
