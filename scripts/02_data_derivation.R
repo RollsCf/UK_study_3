@@ -199,94 +199,70 @@ dat_clean <- dat_clean %>%
 
 #### Physical activity measures ####
 
-# In UKB MET mins is derived from num days of activity and an imputed value when duration is missing.
-# For the complete case analysis we will create our own variables of mins/wk and METmins/wk with just complete data
-# When someone responded as 0 to number of days of activity they wont have been prompted on duration - we will impute 0 not NA for these
-
-# Participants reporting zero days of moderate activity were assigned zero minutes per week, recognising that duration was not collected in these cases. 
-# Complete case variables were defined accordingly.
-
-# Complete case mins/wk mod activity (cc_mins_wk_mod)
+# Create measure of mins/wk from num_days_mod and duration_mod when both present
+# if num days present and = 0 then duration = 0
+# If num days present and >0 and duration absent make NA
+# If num days absent make both NA
 
 #### Helper functions ####
 
-# Convert to numeric safely (suppress warnings)
-as_numeric_safe <- function(x) {
-  suppressWarnings(as.numeric(x))
-}
+#### Helper functions ####
 
-# Calculate weekly minutes (0 if days==0, NA if missing)
+#### Helper functions ####
+
+# Calculate weekly minutes from number of days and duration
 calc_mins_wk <- function(days, duration) {
   case_when(
-    days == 0 ~ 0,
-    is.na(days) | is.na(duration) ~ NA_real_,
-    TRUE ~ duration * days
+    is.na(days) ~ NA_real_,         # Days missing → NA
+    days == 0 ~ 0,                  # 0 days → 0 minutes
+    is.na(duration) ~ NA_real_,     # Duration missing → NA
+    TRUE ~ days * duration          # Otherwise compute minutes/week
   )
 }
 
-# Calculate MET from minutes with a factor
+# Calculate MET-minutes from minutes
 calc_MET <- function(mins, factor) {
   if_else(!is.na(mins), mins * factor, NA_real_)
 }
 
-# Sum multiple columns safely: NA if all NA, otherwise sum treating NA as 0
-sum_na0 <- function(...) {
+# Strict complete-case sum: all components must be present
+strict_sum <- function(...) {
   vals <- cbind(...)
-  rowSums(vals, na.rm = TRUE) %>%
-    replace(rowSums(!is.na(vals)) == 0, NA_real_)
+  if_else(rowSums(is.na(vals)) == 0, rowSums(vals), NA_real_)
 }
+
 
 ########
 
-
 dat_clean <- dat_clean %>%
   mutate(
-    ## Complete-case weekly minutes
+    ## Weekly minutes per activity (complete-case)
     cc_mins_wk_mod  = calc_mins_wk(num_days_mod_clean, duration_mod_clean),
     cc_mins_wk_vig  = calc_mins_wk(num_days_vig_clean, duration_vig_clean),
     cc_mins_wk_walk = calc_mins_wk(num_day_walk_clean, duration_walk_clean),
     
-    ## Complete-case MET calculations
+    ## MET-minutes per activity (complete-case)
     cc_MET_mod  = calc_MET(cc_mins_wk_mod, 4),
     cc_MET_vig  = calc_MET(cc_mins_wk_vig, 8),
     cc_MET_walk = calc_MET(cc_mins_wk_walk, 3.3),
     
-    ## Combined MVPA (minutes & METs)
-    cc_mins_wk_MVPA = sum_na0(cc_mins_wk_mod, cc_mins_wk_vig),
-    cc_MET_MVPA     = sum_na0(cc_MET_mod, cc_MET_vig),
+    ## Combined MVPA (strict complete-case)
+    cc_mins_wk_MVPA = strict_sum(cc_mins_wk_mod, cc_mins_wk_vig),
+    cc_MET_MVPA     = strict_sum(cc_MET_mod, cc_MET_vig),
     
-    ## Total summed activity (minutes & METs)
-    cc_mins_wk_summed = sum_na0(cc_mins_wk_walk, cc_mins_wk_mod, cc_mins_wk_vig),
-    cc_MET_summed     = sum_na0(cc_MET_walk, cc_MET_MVPA),
- 
-    # Variables below are those presented in UKB but have some imputed values so not same as cc
-       
-    ## Self-reported MET variables (numeric)
-    MET_mod_clean_num  = as_numeric_safe(MET_mod_clean),
-    MET_vig_clean_num  = as_numeric_safe(MET_vig_clean),
-    MET_walk_clean_num = as_numeric_safe(MET_walk_clean),
-    
-    ## Self-reported MVPA derived
-    MVPA_derived      = sum_na0(MET_mod_clean_num, MET_vig_clean_num),
-    MMVPA_derived_num = as_numeric_safe(MVPA_derived)
+    ## Total activity (minutes & METs, strict complete-case)
+    cc_mins_wk_total = strict_sum(cc_mins_wk_mod, cc_mins_wk_vig, cc_mins_wk_walk),
+    cc_MET_total     = strict_sum(cc_MET_mod, cc_MET_vig, cc_MET_walk)
   )
 
-
-# Create binary indicator for each of mod, vig and MVPA i.e 0 vs and other value
-
-# Helper function to make binary variable
-
-to_binary <- function(x) as.integer(x > 0)
-
-
-# apply to variables
-vars <- c("cc_MET_mod", "cc_MET_vig", "cc_MET_MVPA")
+# Binary indicators (any activity/METs)
+binary_vars <- c("cc_mins_wk_mod", "cc_mins_wk_vig", "cc_mins_wk_walk",
+                 "cc_MET_mod", "cc_MET_vig", "cc_MET_MVPA")
 
 dat_clean <- dat_clean %>%
-  mutate(across(all_of(vars),
-                to_binary,
+  mutate(across(all_of(binary_vars),
+                ~ as.integer(. > 0),
                 .names = "{.col}_bin"))
-
 
 
 
