@@ -23,13 +23,14 @@ Load dataset: This has already had exclusions applied to it based on demographic
 
 ```{r}
 cc_dat  <- readRDS(file.path(DATA_DERIVED, "complete_case_dat.Rds"))
+IPAQ_dat  <- readRDS(file.path(DATA_DERIVED, "IPAQ_dat.Rds"))
 
 ```
 
 Data set of complete case participants for analysis
 ```{r}
 # Select variables for cross sectional analysis
-cc_dat <- cc_dat %>%
+IPAQ_dat <- IPAQ_dat %>%
   select (
     eid,
     age_education,
@@ -85,14 +86,14 @@ library(table1)
 # Create table1 object
 table1 <- table1(
   ~ age_A0 + ethnicity + tdi + qualification + weight + height + WC + BMI + SRF + Wrist + Hip + num_day_mod_bin + num_day_vig_bin + num_day_walk_bin | sex, 
-  data = cc_dat,
+  data = IPAQ_dat,
   overall = "Total"
 )
 
 
 # Build the PNG file in FIGURES_DIR
 png(
-  filename = file.path(FIGURES_DIR, "Figure_2_demo.png"),
+  filename = file.path(FIGURES_DIR, "Figure_3_demo.png"),
   width = 1200,
   height = 800,
   res = 150
@@ -114,7 +115,7 @@ dev.off()
 Age has already been limited to age 35-65 
 
 ```{r}
-ggplot(cc_dat, aes(x = age_A0)) +
+ggplot(IPAQ_dat, aes(x = age_A0)) +
   geom_bar(fill = "lightblue", color = "black") +
   labs(
     title = "Spread of Age in middle aged cohort at baseline",
@@ -127,7 +128,7 @@ ggplot(cc_dat, aes(x = age_A0)) +
 ##### *Sex*
 
 ```{r}
-ggplot(cc_dat, aes(x = sex)) +
+ggplot(IPAQ_dat, aes(x = sex)) +
   geom_bar(fill = "lightblue", color = "black") +
   labs(
     title = "Split of sex in UK Biobank middle aged cohort at baseline",
@@ -148,7 +149,7 @@ Ethnicity was recoded to show the following groupings
 -  4 = Mixed
 
 ```{r }
-ggplot(cc_dat, aes(x = ethnicity)) +
+ggplot(IPAQ_dat, aes(x = ethnicity)) +
   geom_bar(fill = "lightblue", color = "black") +
   labs(
     title = "Spread of ethnicity in UK Biobank middle aged cohort at baseline",
@@ -157,129 +158,6 @@ ggplot(cc_dat, aes(x = ethnicity)) +
   ) +
   theme_minimal() 
 ```
-
-
-### Exposure variables (PA) - starting with binary measures of whether participants did any mod,vig PA or walked.
-
-```{r}
-
-cc_dat %>%
-  count(num_day_mod_bin) %>%
-  mutate(
-    percent = 100 * n / sum(n)
-  )
-
-cc_dat %>%
-  count(num_day_vig_bin) %>%
-  mutate(
-    percent = 100 * n / sum(n)
-  )
-
-cc_dat %>%
-  count(num_day_walk_bin) %>%
-  mutate(
-    percent = 100 * n / sum(n)
-  )
-```
-```{r}
-
-cc_dat %>%
-  select( num_day_mod_bin, num_day_vig_bin, num_day_walk_bin) %>%
-  pivot_longer(everything(),
-               names_to = "measure",
-               values_to = "value") %>%
-  group_by(measure) %>%
-  summarise(prop = mean(value, na.rm = TRUE)) %>%
-  ggplot(aes(x = measure, y = prop)) +
-  geom_col(width = 0.6) +
-  scale_y_continuous(labels = scales::percent) +
-  labs(x = "MET measure", y = "Proportion with any activity") +
-  theme_minimal()
-
-```
-#### Activity status by outcome
-
-```{r}
-binary_exposures <- c( "num_day_mod_bin", "num_day_vig_bin", "num_day_walk_bin")
-
-PA_summary_binary <- lapply(binary_exposures, function(var) {
-  cc_dat %>%
-    group_by(across(all_of(var))) %>%
-    summarise(
-      N = n(),
-      Fracture_yes = sum(SRF == "Yes", na.rm = TRUE),
-      Fracture_no  = sum(SRF == "No", na.rm = TRUE),
-      Percent_fracture = round(Fracture_yes / N * 100, 1),
-      .groups = "drop"
-    ) %>%
-    rename(Category = all_of(var)) %>%
-    mutate(Exposure = var) %>%
-    select(Exposure, Category, everything())
-}) %>%
-  bind_rows()
-
-
-
-save_table_word(
-  df = PA_summary_binary,
-  table_number = "Table 3.1",
-  folder_path = TABLES_DIR,
-  title = "Fracture distribution activity status"
-)
-```
-
-#### Examine fractures within activity groups ie filter by binary = yes
-
-```{r}
-exposures <- tibble::tibble(
-  bin_var = c( "num_day_mod_bin", "num_day_vig_bin"),
-  met_var = c(  "num_days_mod_PA", "num_days_vig_PA"),
-  label   = c( "Does moderate activity", "Does vigorous activity")
-)
-
-analyse_active_MET <- function(data, bin_var, met_var, label) {
-
-  active <- data %>%
-    filter(.data[[bin_var]] == 1)
-
-  # ---- summary table (printed) ----
-  summary_tbl <- active %>%
-    summarise(
-      N = n(),
-      Fracture_yes = sum(SRF == "Yes", na.rm = TRUE),
-      Fracture_no  = sum(SRF == "No",  na.rm = TRUE)
-    )
-
-  print(paste("Exposure:", label))
-  print(summary_tbl)
-
-  # ---- plot ----
-  p <- ggplot(active, aes(x = SRF, y = .data[[met_var]])) +
-    geom_boxplot(outlier.shape = NA, alpha = 0.6) +
-    geom_jitter(width = 0.15, alpha = 0.3) +
-    scale_y_log10() +
-    labs(
-      x = "Fracture status",
-      y = paste(label, ""),
-      title = paste(label, "number of days per week of activity")
-    ) +
-    theme_minimal()
-
-  print(p)
-}
-
-plots <- purrr::pmap(
-  exposures,
-  ~ analyse_active_MET(
-      data   = cc_dat,
-      bin_var = ..1,
-      met_var = ..2,
-      label   = ..3
-    )
-)
-
-```
-
 
 ### For dose response analysis we will use the MET calculations which means filtering the complete case analysis further by IPAQ groups. This will retain only those with full data across duration and intensity domains.
 
@@ -901,6 +779,131 @@ save_table_word(
 )
 ```
  
+
+### Sensitivity analaysis using larger data set based on num_days_week undertaking activity.
+
+Exposure variables (PA) - starting with binary measures of whether participants did any mod,vig PA or walked.
+
+```{r}
+
+cc_dat %>%
+  count(num_day_mod_bin) %>%
+  mutate(
+    percent = 100 * n / sum(n)
+  )
+
+cc_dat %>%
+  count(num_day_vig_bin) %>%
+  mutate(
+    percent = 100 * n / sum(n)
+  )
+
+cc_dat %>%
+  count(num_day_walk_bin) %>%
+  mutate(
+    percent = 100 * n / sum(n)
+  )
+```
+```{r}
+
+cc_dat %>%
+  select( num_day_mod_bin, num_day_vig_bin, num_day_walk_bin) %>%
+  pivot_longer(everything(),
+               names_to = "measure",
+               values_to = "value") %>%
+  group_by(measure) %>%
+  summarise(prop = mean(value, na.rm = TRUE)) %>%
+  ggplot(aes(x = measure, y = prop)) +
+  geom_col(width = 0.6) +
+  scale_y_continuous(labels = scales::percent) +
+  labs(x = "MET measure", y = "Proportion with any activity") +
+  theme_minimal()
+
+```
+#### Activity status by outcome
+
+```{r}
+binary_exposures <- c( "num_day_mod_bin", "num_day_vig_bin", "num_day_walk_bin")
+
+PA_summary_binary <- lapply(binary_exposures, function(var) {
+  cc_dat %>%
+    group_by(across(all_of(var))) %>%
+    summarise(
+      N = n(),
+      Fracture_yes = sum(SRF == "Yes", na.rm = TRUE),
+      Fracture_no  = sum(SRF == "No", na.rm = TRUE),
+      Percent_fracture = round(Fracture_yes / N * 100, 1),
+      .groups = "drop"
+    ) %>%
+    rename(Category = all_of(var)) %>%
+    mutate(Exposure = var) %>%
+    select(Exposure, Category, everything())
+}) %>%
+  bind_rows()
+
+
+
+save_table_word(
+  df = PA_summary_binary,
+  table_number = "Table 3.1",
+  folder_path = TABLES_DIR,
+  title = "Fracture distribution activity status"
+)
+```
+
+#### Examine fractures within activity groups ie filter by binary = yes
+
+```{r}
+exposures <- tibble::tibble(
+  bin_var = c( "num_day_mod_bin", "num_day_vig_bin"),
+  met_var = c(  "num_days_mod_PA", "num_days_vig_PA"),
+  label   = c( "Does moderate activity", "Does vigorous activity")
+)
+
+analyse_active_MET <- function(data, bin_var, met_var, label) {
+
+  active <- data %>%
+    filter(.data[[bin_var]] == 1)
+
+  # ---- summary table (printed) ----
+  summary_tbl <- active %>%
+    summarise(
+      N = n(),
+      Fracture_yes = sum(SRF == "Yes", na.rm = TRUE),
+      Fracture_no  = sum(SRF == "No",  na.rm = TRUE)
+    )
+
+  print(paste("Exposure:", label))
+  print(summary_tbl)
+
+  # ---- plot ----
+  p <- ggplot(active, aes(x = SRF, y = .data[[met_var]])) +
+    geom_boxplot(outlier.shape = NA, alpha = 0.6) +
+    geom_jitter(width = 0.15, alpha = 0.3) +
+    scale_y_log10() +
+    labs(
+      x = "Fracture status",
+      y = paste(label, ""),
+      title = paste(label, "number of days per week of activity")
+    ) +
+    theme_minimal()
+
+  print(p)
+}
+
+plots <- purrr::pmap(
+  exposures,
+  ~ analyse_active_MET(
+      data   = cc_dat,
+      bin_var = ..1,
+      met_var = ..2,
+      label   = ..3
+    )
+)
+
+```
+
+### Save outputs
  
 ```{r}
 #save rsf for analysis
