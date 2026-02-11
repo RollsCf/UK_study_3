@@ -277,14 +277,52 @@ gridExtra::grid.table(tab_exc)
 # Close the device
 dev.off()
 
-complete_case_dat <- middle_aged_dat
+# Save cleaned outputs
+saveRDS(
+  middle_aged_dat,
+  file.path(DATA_DERIVED, "complete_case_dat.rds")
+)
+
+### Further exclusion based on more restrictive IPAQ
+
+nb <- nrow(middle_aged_dat)
+
+middle_aged_dat <- middle_aged_dat[
+  !is.na(middle_aged_dat$IPAQ),
+]
+
+tab_exc <- rbind(
+  tab_exc,
+  data.frame(
+    Exclusion = "Missing IPAQ data",
+    Number_excluded = nb - nrow(middle_aged_dat),
+    Number_remaining = nrow(middle_aged_dat)
+  )
+)
+
+View(tab_exc)
+
+# Build the PNG file in FIGURES_DIR
+png(
+  filename = file.path(FIGURES_DIR, "Figure_2_Exclusion_flow_IPAQ.png"),
+  width = 1200,
+  height = 800,
+  res = 150
+)
+
+# Render the table as a figure
+gridExtra::grid.table(tab_exc)
+
+# Close the device
+dev.off()
 
 
 # Save cleaned outputs
 saveRDS(
-  complete_case_dat,
-  file.path(DATA_DERIVED, "complete_case_dat.rds")
+  middle_aged_dat,
+  file.path(DATA_DERIVED, "IPAQ_dat.rds")
 )
+
 
 # Compare complete case set (complete_case_dat) to full set (middle_aged_data)
 
